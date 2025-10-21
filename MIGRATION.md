@@ -112,9 +112,9 @@ python -m gauge \\
 Both tools used the same CSV format, so no changes needed:
 
 ```csv
-chainguard_image,alternative_image
-cgr.dev/chainguard-private/python:latest,python:3.12
-cgr.dev/chainguard-private/nginx:latest,nginx:1.25
+alternative_image,chainguard_image
+python:3.12,cgr.dev/chainguard-private/python:latest
+nginx:1.25,cgr.dev/chainguard-private/nginx:latest
 ```
 
 ## Argument Mapping

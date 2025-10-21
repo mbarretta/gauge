@@ -94,10 +94,10 @@ gauge --source images.csv \
 Create a CSV file with image pairs (one per line):
 
 ```csv
-chainguard_image,alternative_image
-cgr.dev/chainguard-private/python:latest,python:3.12
-cgr.dev/chainguard-private/nginx:latest,nginx:1.25
-cgr.dev/chainguard-private/postgres:latest,postgres:16
+alternative_image,chainguard_image
+python:3.12,cgr.dev/chainguard-private/python:latest
+nginx:1.25,cgr.dev/chainguard-private/nginx:latest
+postgres:16,cgr.dev/chainguard-private/postgres:latest
 ```
 
 Optional header row is automatically skipped.

@@ -60,7 +60,7 @@ Examples:
         "--source",
         type=Path,
         required=True,
-        help="Source CSV file with image pairs (chainguard_image,alternative_image)",
+        help="Source CSV file with image pairs (alternative_image,chainguard_image)",
     )
     required.add_argument(
         "-o",
@@ -181,7 +181,7 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
     """
     Load image pairs from CSV file.
 
-    Expected format: chainguard_image,alternative_image
+    Expected format: alternative_image,chainguard_image
     """
     pairs = []
 
@@ -197,14 +197,14 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
                 # Skip header if it looks like a header
                 if line_num == 1 and any(
                     header in row[0].lower()
-                    for header in ["chainguard", "customer", "image"]
+                    for header in ["chainguard", "customer", "image", "alternative"]
                 ):
                     continue
 
                 # Parse pair
                 if len(row) >= 2:
-                    cgr_image = row[0].strip()
-                    alt_image = row[1].strip()
+                    alt_image = row[0].strip()
+                    cgr_image = row[1].strip()
 
                     if cgr_image and alt_image:
                         pairs.append(ImagePair(cgr_image, alt_image))
