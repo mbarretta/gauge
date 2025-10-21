@@ -1,8 +1,9 @@
 """
-XLSX report generator for ROI analysis.
+XLSX generator for vulnerability cost analysis.
 
-Generates comprehensive Excel spreadsheets with ROI calculations,
-FIPS cost estimates, and detailed vulnerability breakdowns.
+Generates comprehensive Excel cost analysis spreadsheets with ROI calculations,
+CVE remediation cost estimates, and FIPS implementation cost analysis.
+This format is designed for financial planning and business case development.
 """
 
 import logging
@@ -25,14 +26,18 @@ CGR_IMAGE_COST = 29000  # Cost per Chainguard image
 
 class XLSXGenerator(OutputGenerator):
     """
-    Excel report generator matching minibva output format.
+    Vulnerability cost analysis generator (XLSX format).
 
-    Generates comprehensive ROI analysis with:
-    - Image comparison data
-    - Roll-up metrics
-    - CVE backlog remediation costs
-    - Projected future CVE costs
-    - Optional FIPS implementation costs
+    Generates comprehensive financial analysis spreadsheets with:
+    - Image comparison data with vulnerability counts
+    - Roll-up metrics and summary statistics
+    - CVE backlog remediation cost calculations
+    - Projected future CVE cost estimates
+    - Optional FIPS implementation cost analysis
+    - ROI calculations and business case metrics
+
+    This generator focuses on cost analysis and ROI calculations, not just
+    vulnerability findings. For assessment summaries, use HTMLGenerator.
     """
 
     def supports_format(self) -> str:
@@ -51,7 +56,7 @@ class XLSXGenerator(OutputGenerator):
         **kwargs,
     ) -> None:
         """
-        Generate XLSX report.
+        Generate vulnerability cost analysis report (XLSX).
 
         Args:
             results: Scan results for image pairs
@@ -63,7 +68,7 @@ class XLSXGenerator(OutputGenerator):
             auto_detect_fips: Auto-detect FIPS images from names
             **kwargs: Additional options
         """
-        logger.info(f"Generating XLSX report: {output_path}")
+        logger.info(f"Generating vulnerability cost analysis: {output_path}")
 
         # Filter successful scans
         successful = [r for r in results if r.scan_successful]
@@ -104,7 +109,7 @@ class XLSXGenerator(OutputGenerator):
         worksheet.autofit()
         workbook.close()
 
-        logger.info(f"XLSX report generated: {output_path}")
+        logger.info(f"Vulnerability cost analysis generated: {output_path}")
 
 
 class _XLSXReportWriter:

@@ -1,8 +1,9 @@
 """
 Command-line interface for Gauge - Container Vulnerability Assessment Tool.
 
-Provides a clean, intuitive CLI for vulnerability assessment with
-support for both HTML and XLSX output formats.
+Provides a clean, intuitive CLI for vulnerability scanning with two output types:
+- HTML: Vulnerability assessment summary reports
+- XLSX: Vulnerability cost analysis with ROI calculations
 """
 
 import argparse
@@ -38,17 +39,21 @@ def parse_args() -> argparse.Namespace:
         description="Gauge - Container Vulnerability Assessment Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Output Types:
+  HTML  - Vulnerability assessment summary report
+  XLSX  - Vulnerability cost analysis with ROI calculations
+
 Examples:
-  # Generate XLSX report
-  gauge --source images.csv --output report.xlsx --format xlsx \\
+  # Generate vulnerability cost analysis (XLSX)
+  gauge --source images.csv --output analysis.xlsx \\
         --customer "Acme Corp" --hours-per-vuln 3 --hourly-rate 100
 
-  # Generate HTML report with executive summary
-  gauge --source images.csv --output report.html --format html \\
+  # Generate vulnerability assessment summary (HTML)
+  gauge --source images.csv --output assessment.html \\
         --customer "Acme Corp" --exec-summary summary.md
 
   # Include FIPS cost analysis (XLSX only)
-  gauge --source images.csv --output report.xlsx --format xlsx \\
+  gauge --source images.csv --output cost-analysis.xlsx \\
         --fips-count 5
         """,
     )
@@ -70,12 +75,12 @@ Examples:
         help="Output file path (.html or .xlsx)",
     )
 
-    # Output format
-    format_group = parser.add_argument_group("output format")
+    # Output type
+    format_group = parser.add_argument_group("output type")
     format_group.add_argument(
         "--format",
         choices=["html", "xlsx"],
-        help="Output format (auto-detected from file extension if not specified)",
+        help="Output type: 'html' for assessment summary, 'xlsx' for cost analysis (auto-detected from extension)",
     )
 
     # Common options
@@ -99,8 +104,8 @@ Examples:
         help="Platform for scans (e.g., linux/amd64)",
     )
 
-    # HTML-specific options
-    html_opts = parser.add_argument_group("HTML report options")
+    # HTML-specific options (assessment summary)
+    html_opts = parser.add_argument_group("assessment summary options (HTML)")
     html_opts.add_argument(
         "-e",
         "--exec-summary",
@@ -114,8 +119,8 @@ Examples:
         help="Markdown file for custom appendix",
     )
 
-    # XLSX-specific options
-    xlsx_opts = parser.add_argument_group("XLSX report options (ROI analysis)")
+    # XLSX-specific options (cost analysis)
+    xlsx_opts = parser.add_argument_group("cost analysis options (XLSX)")
     xlsx_opts.add_argument(
         "--hours-per-vuln",
         "--vulnhours",
@@ -252,9 +257,10 @@ def main():
     logger.info("Gauge - Container Vulnerability Assessment v2.0")
     logger.info("=" * 60)
 
-    # Detect output format
+    # Detect output type
     output_format = detect_output_format(args.output, args.format)
-    logger.info(f"Output format: {output_format.upper()}")
+    output_type = "Vulnerability Cost Analysis" if output_format == "xlsx" else "Vulnerability Assessment Summary"
+    logger.info(f"Output type: {output_type} ({output_format.upper()})")
 
     # Load image pairs
     pairs = load_image_pairs(args.source)

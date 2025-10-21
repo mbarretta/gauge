@@ -5,25 +5,27 @@
 ## Features
 
 ### Core Capabilities
-- **Dual Output Formats**: Generate professional HTML reports or detailed XLSX spreadsheets
+- **Dual Output Types**: Generate vulnerability assessment summaries (HTML) or cost analysis reports (XLSX)
 - **Intelligent Caching**: Digest-based caching dramatically improves performance on repeated scans
 - **Parallel Scanning**: Multi-threaded image scanning for optimal performance
 - **Comprehensive Analysis**: Detailed vulnerability breakdowns by severity (Critical, High, Medium, Low, Negligible)
 
-### HTML Reports
-- Professional PDF-optimized reports with Chainguard branding
+### Vulnerability Assessment Summary (HTML)
+- Professional PDF-optimized assessment reports with Chainguard branding
 - Executive summaries from markdown files
 - Custom appendix support for organization-specific content
-- CVE reduction analysis with visual metrics
-- Side-by-side image comparisons
+- CVE reduction metrics and visual comparisons
+- Side-by-side image vulnerability analysis
+- Focus: Security posture overview and vulnerability findings
 
-### XLSX Reports (ROI Analysis)
+### Vulnerability Cost Analysis (XLSX)
 - Detailed ROI calculations for Chainguard adoption
 - CVE backlog remediation cost estimates
 - Projected future CVE costs based on historical data
 - Optional FIPS implementation cost analysis
 - Auto-detection of FIPS images
 - Interactive formulas for scenario planning
+- Focus: Financial planning and business case development
 
 ## Prerequisites
 
@@ -61,21 +63,25 @@ pip install -e .
 
 ## Quick Start
 
-### Generate XLSX Report (ROI Analysis)
+### Generate Vulnerability Cost Analysis (XLSX)
+
+Generate a comprehensive cost analysis with ROI calculations:
 
 ```bash
 gauge --source images.csv \
-      --output report.xlsx \
+      --output cost-analysis.xlsx \
       --customer "Acme Corp" \
       --hours-per-vuln 3 \
       --hourly-rate 100
 ```
 
-### Generate HTML Report
+### Generate Vulnerability Assessment Summary (HTML)
+
+Generate an executive assessment summary report:
 
 ```bash
 gauge --source images.csv \
-      --output report.html \
+      --output assessment.html \
       --customer "Acme Corp" \
       --exec-summary summary.md \
       --appendix appendix.md
@@ -83,9 +89,11 @@ gauge --source images.csv \
 
 ### With FIPS Cost Analysis
 
+Add FIPS implementation cost calculations (XLSX only):
+
 ```bash
 gauge --source images.csv \
-      --output report.xlsx \
+      --output cost-analysis.xlsx \
       --auto-detect-fips
 ```
 
@@ -111,11 +119,11 @@ Optional header row is automatically skipped.
 | `-s, --source` | Source CSV file with image pairs |
 | `-o, --output` | Output file path (.html or .xlsx) |
 
-### Output Format
+### Output Type
 
 | Option | Description |
 |--------|-------------|
-| `--format {html,xlsx}` | Output format (auto-detected from file extension if not specified) |
+| `--format {html,xlsx}` | Output type: 'html' for assessment summary, 'xlsx' for cost analysis (auto-detected from extension) |
 
 ### Common Options
 
@@ -126,14 +134,14 @@ Optional header row is automatically skipped.
 | `--platform` | - | Platform for scans (e.g., linux/amd64) |
 | `-v, --verbose` | - | Enable verbose logging |
 
-### HTML Report Options
+### Assessment Summary Options (HTML)
 
 | Option | Description |
 |--------|-------------|
 | `-e, --exec-summary` | Markdown file for executive summary |
 | `-a, --appendix` | Markdown file for custom appendix |
 
-### XLSX Report Options
+### Cost Analysis Options (XLSX)
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -244,7 +252,9 @@ gauge --cache-dir /path/to/cache ...
 
 ## Examples
 
-### Basic HTML Report
+### Basic Vulnerability Assessment Summary
+
+Generate a simple assessment summary report:
 
 ```bash
 gauge --source my-images.csv \
@@ -252,11 +262,13 @@ gauge --source my-images.csv \
       --customer "Acme Corporation"
 ```
 
-### Full ROI Analysis with FIPS
+### Full Cost Analysis with FIPS
+
+Generate a comprehensive cost analysis with ROI and FIPS calculations:
 
 ```bash
 gauge --source production-images.csv \
-      --output roi-analysis.xlsx \
+      --output cost-analysis.xlsx \
       --customer "Acme Corp" \
       --hours-per-vuln 4 \
       --hourly-rate 125 \
@@ -265,6 +277,8 @@ gauge --source production-images.csv \
 ```
 
 ### High-Performance Scan
+
+Maximize scanning speed for large fleets:
 
 ```bash
 gauge --source large-fleet.csv \

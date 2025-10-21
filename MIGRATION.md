@@ -5,10 +5,10 @@ This document helps users migrate from the legacy tools (`cg_assessment` and `mi
 ## Overview
 
 The new unified tool (`gauge`) consolidates two previous tools:
-- **cg_assessment**: HTML/PDF report generator
-- **minibva**: XLSX ROI analysis tool
+- **cg_assessment**: Vulnerability assessment summary generator (HTML/PDF)
+- **minibva**: Vulnerability cost analysis tool (XLSX ROI)
 
-Both output formats are now available through a single, well-engineered CLI.
+Both output types are now available through a single, well-engineered CLI.
 
 ## Key Improvements
 
@@ -24,8 +24,8 @@ Both output formats are now available through a single, well-engineered CLI.
 - **Reduced memory**: Efficient streaming of scan results
 
 ### Usability
-- **Unified CLI**: Single tool for both output formats
-- **Auto-detection**: Output format detected from file extension
+- **Unified CLI**: Single tool for both output types (assessment summary and cost analysis)
+- **Auto-detection**: Output type detected from file extension
 - **Better help**: Comprehensive --help documentation
 - **Consistent naming**: Standardized argument names
 
@@ -43,7 +43,7 @@ pip install -e .
 
 ### Step 2: Update Scripts
 
-#### From `cg_assessment` (HTML Reports)
+#### From `cg_assessment` (Vulnerability Assessment Summary - HTML)
 
 **Old Command:**
 ```bash
@@ -73,7 +73,7 @@ python -m gauge \\
 - Add `--format html` (optional if output has .html extension)
 - All other arguments remain the same
 
-#### From `minibva` (XLSX Reports)
+#### From `minibva` (Vulnerability Cost Analysis - XLSX)
 
 **Old Command:**
 ```bash
@@ -151,18 +151,19 @@ nginx:1.25,cgr.dev/chainguard-private/nginx:latest
 
 ### All Features Preserved
 
-✅ **HTML Reports**
+✅ **Vulnerability Assessment Summaries (HTML)**
 - Executive summary support
 - Custom appendix
 - Chainguard branding
 - PDF optimization
 - Template variables
+- Vulnerability comparison metrics
 
-✅ **XLSX Reports**
+✅ **Vulnerability Cost Analysis (XLSX)**
 - ROI calculations
-- CVE backlog costs
-- Future CVE projections
-- FIPS cost analysis
+- CVE backlog remediation costs
+- Future CVE cost projections
+- FIPS implementation cost analysis
 - Interactive formulas
 
 ### New Features
@@ -184,15 +185,17 @@ nginx:1.25,cgr.dev/chainguard-private/nginx:latest
 
 ## Output Compatibility
 
-### HTML Reports
+### Vulnerability Assessment Summaries (HTML)
 - **100% compatible** with previous `cg_assessment` output
 - Same styling and layout
 - Same PDF conversion process
+- Same vulnerability metrics and comparisons
 
-### XLSX Reports
+### Vulnerability Cost Analysis (XLSX)
 - **100% compatible** with previous `minibva` output
 - Same formulas and calculations
 - Same worksheet layout
+- Same ROI and cost analysis methodology
 - Can open old and new files side-by-side
 
 ## Batch Migration Script

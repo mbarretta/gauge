@@ -17,8 +17,8 @@ gauge/
 │
 ├── outputs/                       # Output generators (Strategy pattern)
 │   ├── base.py                    # Abstract OutputGenerator interface
-│   ├── html_generator.py          # HTML reports (from cg_assessment)
-│   └── xlsx_generator.py          # XLSX reports (from minibva)
+│   ├── html_generator.py          # Assessment summaries (from cg_assessment)
+│   └── xlsx_generator.py          # Cost analysis (from minibva)
 │
 ├── integrations/                  # External service clients
 │   ├── kev_catalog.py             # CISA KEV integration
@@ -34,22 +34,22 @@ gauge/
 
 ### Features Preserved
 
-#### From `cg_assessment` (HTML Reports)
-✅ Professional HTML/PDF reports with Chainguard branding
+#### From `cg_assessment` (Vulnerability Assessment Summaries - HTML)
+✅ Professional HTML/PDF assessment reports with Chainguard branding
 ✅ Executive summary support (markdown)
 ✅ Custom appendix support (markdown)
 ✅ Template variable interpolation
-✅ CVE reduction analysis
-✅ Side-by-side comparisons
+✅ CVE reduction analysis and metrics
+✅ Side-by-side vulnerability comparisons
 ✅ Digest-based caching
 ✅ Parallel scanning
 ✅ Registry fallback system
 ✅ Retry logic
 
-#### From `minibva` (XLSX Reports)
+#### From `minibva` (Vulnerability Cost Analysis - XLSX)
 ✅ Comprehensive ROI calculations
-✅ CVE backlog remediation costs
-✅ Future CVE projections (monthly ratios)
+✅ CVE backlog remediation cost estimates
+✅ Future CVE cost projections (monthly ratios)
 ✅ FIPS implementation cost analysis
 ✅ FIPS maintenance cost tracking
 ✅ Interactive Excel formulas
@@ -59,12 +59,12 @@ gauge/
 
 ### New Capabilities
 
-🎉 **Unified CLI**: Single tool for both output formats
-🎉 **Auto-format detection**: Detects output format from file extension
+🎉 **Unified CLI**: Single tool for both output types (assessment summary and cost analysis)
+🎉 **Auto-type detection**: Detects output type from file extension
 🎉 **Improved caching**: 30% faster cache operations
 🎉 **Better error handling**: Clear, actionable error messages
 🎉 **Type safety**: Comprehensive type hints throughout
-🎉 **Modular design**: Easy to extend with new output formats
+🎉 **Modular design**: Easy to extend with new output types
 🎉 **Enhanced logging**: Structured logging with progress indicators
 🎉 **Package installation**: Installable via pip
 
@@ -72,7 +72,7 @@ gauge/
 
 ### SOLID Principles
 - **Single Responsibility**: Each module has one clear purpose
-- **Open/Closed**: Easy to add new output formats without modifying existing code
+- **Open/Closed**: Easy to add new output types without modifying existing code
 - **Liskov Substitution**: Output generators are fully interchangeable
 - **Interface Segregation**: Clean, minimal interfaces
 - **Dependency Inversion**: Depends on abstractions, not concretions
@@ -201,21 +201,21 @@ Recommended scenarios:
 
 ## Usage Examples
 
-### HTML Report
+### Vulnerability Assessment Summary (HTML)
 ```bash
 python -m gauge \\
   --source images.csv \\
-  --output report.html \\
+  --output assessment.html \\
   --customer "Acme Corp" \\
   --exec-summary summary.md \\
   --appendix appendix.md
 ```
 
-### XLSX Report with FIPS
+### Vulnerability Cost Analysis (XLSX) with FIPS
 ```bash
 python -m gauge \\
   --source images.csv \\
-  --output roi-analysis.xlsx \\
+  --output cost-analysis.xlsx \\
   --customer "Acme Corp" \\
   --hours-per-vuln 3 \\
   --hourly-rate 100 \\

@@ -1,8 +1,9 @@
 """
-HTML report generator for vulnerability assessment.
+HTML generator for vulnerability assessment summaries.
 
-Generates professional HTML reports optimized for PDF conversion,
-including executive summaries, detailed comparisons, and appendixes.
+Generates professional HTML assessment summary reports optimized for PDF conversion.
+These reports provide an executive overview of vulnerability findings, comparing
+Chainguard images against alternatives, with executive summaries and appendixes.
 """
 
 import logging
@@ -20,14 +21,18 @@ logger = logging.getLogger(__name__)
 
 class HTMLGenerator(OutputGenerator):
     """
-    HTML report generator for customer-facing PDF reports.
+    Vulnerability assessment summary generator (HTML format).
 
-    Generates professional Chainguard-branded reports with:
+    Generates professional Chainguard-branded assessment summaries with:
     - Executive summary (from markdown file)
-    - CVE reduction analysis
-    - Side-by-side image comparison
+    - Vulnerability count comparisons
+    - CVE reduction metrics
+    - Side-by-side image analysis
     - Custom appendix support
     - PDF-optimized styling
+
+    This generator focuses on presenting vulnerability findings and reduction
+    metrics, not cost analysis. For ROI and cost calculations, use XLSXGenerator.
     """
 
     def supports_format(self) -> str:
@@ -44,7 +49,7 @@ class HTMLGenerator(OutputGenerator):
         **kwargs,
     ) -> None:
         """
-        Generate HTML report.
+        Generate vulnerability assessment summary report (HTML).
 
         Args:
             results: Scan results for image pairs
@@ -54,7 +59,7 @@ class HTMLGenerator(OutputGenerator):
             appendix_path: Path to custom appendix markdown
             **kwargs: Additional options
         """
-        logger.info(f"Generating HTML report: {output_path}")
+        logger.info(f"Generating vulnerability assessment summary: {output_path}")
 
         # Filter successful scans
         successful = [r for r in results if r.scan_successful]
@@ -73,7 +78,7 @@ class HTMLGenerator(OutputGenerator):
         with open(output_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
-        logger.info(f"HTML report generated: {output_path}")
+        logger.info(f"Vulnerability assessment summary generated: {output_path}")
 
     def _build_html(
         self,
