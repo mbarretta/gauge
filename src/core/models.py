@@ -8,7 +8,7 @@ All models are immutable (frozen dataclasses) to prevent accidental mutation.
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Optional
 
 
 class SeverityLevel(str, Enum):
@@ -22,7 +22,7 @@ class SeverityLevel(str, Enum):
     UNKNOWN = "Unknown"
 
     @classmethod
-    def ordered_levels(cls) -> List[str]:
+    def ordered_levels(cls) -> list[str]:
         """Return severity levels in display order."""
         return [
             cls.CRITICAL.value,
@@ -55,7 +55,7 @@ class VulnerabilityCount:
     low: int = 0
     negligible: int = 0
 
-    def to_list(self) -> List[int]:
+    def to_list(self) -> list[int]:
         """Convert to ordered list for tabular output."""
         return [
             self.total,
@@ -66,7 +66,7 @@ class VulnerabilityCount:
             self.negligible,
         ]
 
-    def to_dict(self) -> Dict[str, int]:
+    def to_dict(self) -> dict[str, int]:
         """Convert to dictionary for serialization."""
         return {
             "total": self.total,
@@ -78,7 +78,7 @@ class VulnerabilityCount:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, int]) -> "VulnerabilityCount":
+    def from_dict(cls, data: dict[str, int]) -> "VulnerabilityCount":
         """Create from dictionary."""
         return cls(
             total=data.get("total", 0),

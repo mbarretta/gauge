@@ -6,7 +6,6 @@ Defines the contract that all output generators must implement.
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List
 
 from core.models import ScanResult
 
@@ -21,7 +20,7 @@ class OutputGenerator(ABC):
     @abstractmethod
     def generate(
         self,
-        results: List[ScanResult],
+        results: list[ScanResult],
         output_path: Path,
         **kwargs,
     ) -> None:

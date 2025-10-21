@@ -6,7 +6,6 @@ including initial implementation phases and ongoing maintenance.
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
 
 
 @dataclass
@@ -92,7 +91,7 @@ class FIPSCalculator:
 
     def calculate_initial_implementation(
         self, num_fips_images: int
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """
         Calculate initial FIPS implementation costs.
 
@@ -117,7 +116,7 @@ class FIPSCalculator:
 
     def calculate_monthly_maintenance(
         self, num_fips_images: int
-    ) -> Tuple[float, float]:
+    ) -> tuple[float, float]:
         """
         Calculate monthly FIPS maintenance costs.
 
@@ -182,10 +181,10 @@ class FIPSCalculator:
             total_cost=total_cost,
         )
 
-    def get_initial_phases(self) -> List[FIPSPhase]:
+    def get_initial_phases(self) -> list[FIPSPhase]:
         """Get list of initial implementation phases."""
         return self.INITIAL_PHASES.copy()
 
-    def get_maintenance_phases(self) -> List[FIPSPhase]:
+    def get_maintenance_phases(self) -> list[FIPSPhase]:
         """Get list of maintenance phases."""
         return self.MAINTENANCE_PHASES.copy()

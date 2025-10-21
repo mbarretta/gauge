@@ -7,7 +7,7 @@ including executive summaries, detailed comparisons, and appendixes.
 
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 from core.models import ScanResult
 from outputs.base import OutputGenerator
@@ -36,7 +36,7 @@ class HTMLGenerator(OutputGenerator):
 
     def generate(
         self,
-        results: List[ScanResult],
+        results: list[ScanResult],
         output_path: Path,
         customer_name: str = "Customer",
         exec_summary_path: Optional[Path] = None,
@@ -77,7 +77,7 @@ class HTMLGenerator(OutputGenerator):
 
     def _build_html(
         self,
-        results: List[ScanResult],
+        results: list[ScanResult],
         customer_name: str,
         exec_summary_path: Optional[Path],
         appendix_path: Optional[Path],
@@ -227,7 +227,7 @@ class HTMLGenerator(OutputGenerator):
     <p>Across {num_images} container images, Chainguard alternatives eliminate <strong>{reduction} CVEs</strong></p>
 </div>"""
 
-    def _html_comparison_table(self, results: List[ScanResult]) -> str:
+    def _html_comparison_table(self, results: list[ScanResult]) -> str:
         """Generate comparison table."""
         rows = []
         for result in results:

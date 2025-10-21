@@ -9,7 +9,7 @@ import json
 import logging
 import subprocess
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ class ChainguardAPI:
         tag: str,
         from_date: Optional[str] = None,
         to_date: Optional[str] = None,
-    ) -> Dict:
+    ) -> dict:
         """
         Get historical vulnerability counts for an image.
 
@@ -98,7 +98,7 @@ class ChainguardAPI:
 
     def calculate_cve_growth_rate(
         self, repo: str, tag: str
-    ) -> Optional[Dict[str, float]]:
+    ) -> Optional[dict[str, float]]:
         """
         Calculate monthly CVE growth rate for an image.
 

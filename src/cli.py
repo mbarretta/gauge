@@ -10,7 +10,6 @@ import csv
 import logging
 import sys
 from pathlib import Path
-from typing import List
 
 from core.cache import ScanCache
 from core.models import ImagePair
@@ -178,7 +177,7 @@ Examples:
     return parser.parse_args()
 
 
-def load_image_pairs(csv_path: Path) -> List[ImagePair]:
+def load_image_pairs(csv_path: Path) -> list[ImagePair]:
     """
     Load image pairs from CSV file.
 

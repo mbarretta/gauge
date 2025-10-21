@@ -10,7 +10,7 @@ import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 from core.cache import ScanCache
 from core.models import (
@@ -255,8 +255,8 @@ class VulnerabilityScanner:
             )
 
     def scan_image_pairs_parallel(
-        self, pairs: List[ImagePair]
-    ) -> List[ScanResult]:
+        self, pairs: list[ImagePair]
+    ) -> list[ScanResult]:
         """
         Scan multiple image pairs in parallel.
 

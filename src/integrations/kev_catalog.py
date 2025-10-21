@@ -7,7 +7,7 @@ Fetches and checks CVEs against CISA's official KEV catalog.
 import json
 import logging
 import subprocess
-from typing import Dict, List, Optional, Set
+from typing import Optional
 
 from core.models import KEVEntry
 
@@ -26,8 +26,8 @@ class KEVCatalog:
 
     def __init__(self):
         """Initialize KEV catalog."""
-        self.vulnerabilities: List[KEVEntry] = []
-        self.cve_ids: Set[str] = set()
+        self.vulnerabilities: list[KEVEntry] = []
+        self.cve_ids: set[str] = set()
         self.loaded = False
 
     def load(self) -> bool:
@@ -101,8 +101,8 @@ class KEVCatalog:
         return None
 
     def check_image_for_kevs(
-        self, image_name: str, cve_ids: List[str]
-    ) -> List[str]:
+        self, image_name: str, cve_ids: list[str]
+    ) -> list[str]:
         """
         Check which CVEs from an image are KEVs.
 

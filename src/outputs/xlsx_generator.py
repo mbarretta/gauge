@@ -7,7 +7,7 @@ FIPS cost estimates, and detailed vulnerability breakdowns.
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional
 
 import xlsxwriter
 from xlsxwriter.utility import xl_rowcol_to_cell
@@ -41,7 +41,7 @@ class XLSXGenerator(OutputGenerator):
 
     def generate(
         self,
-        results: List[ScanResult],
+        results: list[ScanResult],
         output_path: Path,
         customer_name: str = "Customer",
         hours_per_vuln: float = 3.0,
@@ -341,9 +341,9 @@ class _XLSXReportWriter:
 
     def write_image_comparison(
         self,
-        alt_analyses: List[ImageAnalysis],
-        cgr_analyses: List[ImageAnalysis],
-    ) -> Tuple[dict, dict]:
+        alt_analyses: list[ImageAnalysis],
+        cgr_analyses: list[ImageAnalysis],
+    ) -> tuple[dict, dict]:
         """Write image comparison section."""
         # Header
         header = [
@@ -370,7 +370,7 @@ class _XLSXReportWriter:
 
         return alt_cells, cgr_cells
 
-    def _write_image_data(self, analyses: List[ImageAnalysis], format_key: str) -> dict:
+    def _write_image_data(self, analyses: list[ImageAnalysis], format_key: str) -> dict:
         """Write image data rows and return cell references."""
         start_cells = {
             "size": xl_rowcol_to_cell(self.row, self.col + 1),
@@ -449,7 +449,7 @@ class _XLSXReportWriter:
         # For now, we'll calculate them dynamically
         pass  # Implementation would mirror the original
 
-    def write_roi_sections(self, alt_analyses: List[ImageAnalysis]):
+    def write_roi_sections(self, alt_analyses: list[ImageAnalysis]):
         """Write ROI estimation sections."""
         self.row += 2
 
@@ -505,7 +505,7 @@ class _XLSXReportWriter:
         # Estimated future CVEs section
         self._write_estimated_cves_section(alt_analyses)
 
-    def _write_backlog_section(self, alt_analyses: List[ImageAnalysis]):
+    def _write_backlog_section(self, alt_analyses: list[ImageAnalysis]):
         """Write CVE backlog remediation section."""
         self.worksheet.merge_range(
             self.row,
@@ -615,7 +615,7 @@ class _XLSXReportWriter:
         )
         self.row += 2
 
-    def _write_estimated_cves_section(self, alt_analyses: List[ImageAnalysis]):
+    def _write_estimated_cves_section(self, alt_analyses: list[ImageAnalysis]):
         """Write estimated future CVEs section."""
         self.worksheet.merge_range(
             self.row,

@@ -6,7 +6,6 @@ both for existing backlog and projected future vulnerabilities.
 """
 
 from dataclasses import dataclass
-from typing import List
 
 from core.models import ImageAnalysis, ScanResult
 
@@ -59,7 +58,7 @@ class ROICalculator:
         self.hourly_rate = hourly_rate
 
     def calculate_backlog_cost(
-        self, analyses: List[ImageAnalysis]
+        self, analyses: list[ImageAnalysis]
     ) -> tuple[float, float]:
         """
         Calculate cost to clear current CVE backlog.
@@ -102,7 +101,7 @@ class ROICalculator:
         )
 
     def calculate_ongoing_cost(
-        self, analyses: List[ImageAnalysis]
+        self, analyses: list[ImageAnalysis]
     ) -> tuple[float, float, float, float]:
         """
         Calculate ongoing cost of handling new CVEs.
@@ -123,7 +122,7 @@ class ROICalculator:
         return monthly_hours, monthly_cost, yearly_hours, yearly_cost
 
     def calculate_full_roi(
-        self, alternative_analyses: List[ImageAnalysis]
+        self, alternative_analyses: list[ImageAnalysis]
     ) -> ROIMetrics:
         """
         Calculate complete ROI metrics.
