@@ -423,8 +423,13 @@ class HTMLGenerator:
         if not chps_score:
             return "N/A"
 
-        grade_class = self._get_grade_badge_class(chps_score.grade)
-        return f'{chps_score.score:.1f} <span class="{grade_class}">{chps_score.grade}</span>'
+        # Fix grade mapping - convert E to F (for cached results that still have E)
+        grade = chps_score.grade
+        if grade == "E" or chps_score.score == 0:
+            grade = "F"
+
+        grade_class = self._get_grade_badge_class(grade)
+        return f'<span class="{grade_class}">{grade}</span>'
 
     def _generate_chps_section(self, results: list[ScanResult]) -> str:
         """Generate CHPS scoring section."""
@@ -468,13 +473,13 @@ class HTMLGenerator:
         <!-- CHPS Scoring Section -->
         <div class="images-scanned-section">
             <h2>CHPS Hardening & Provenance Scores</h2>
-            <p>CHPS (Container Hardening and Provenance Scanner) evaluates container images for security hardening and provenance best practices. Scores range from 0-100, with higher scores indicating better security posture.</p>
+            <p>CHPS (Container Hardening and Provenance Scanner) evaluates container images for security hardening and provenance best practices. Grades range from A+ (best) to F (worst).</p>
             <div class="image-table-container">
                 <table>
                     <thead>
                         <tr>
                             <th>Image</th>
-                            <th>CHPS Score (Grade)</th>
+                            <th>CHPS Grade</th>
                             <th>Improvement</th>
                         </tr>
                     </thead>
