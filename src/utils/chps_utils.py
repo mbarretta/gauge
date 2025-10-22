@@ -91,17 +91,19 @@ class CHPSScanner:
             logger.info(f"Running CHPS scan on {image_name}...")
 
             # Run chps-scorer in a container with access to Docker socket
-            # This allows chps-scorer to inspect the local image
-            # Try: image first, then flags
+            # chps-scorer uses Docker-in-Docker, requires --privileged
+            # Syntax: chps-scorer -o json --skip-cves --local <image>
             cmd = [
                 self.docker_command,
                 "run",
                 "--rm",
+                "--privileged",
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
                 CHPS_IMAGE,
-                image_name,
+                "-o", "json",
                 "--skip-cves",
-                "--format", "json",
+                "--local",
+                image_name,
             ]
 
             logger.debug(f"CHPS command: {' '.join(cmd)}")
