@@ -121,17 +121,33 @@ class CHPSScanner:
                 return None
 
             # Parse JSON output
-            logger.debug(f"CHPS raw output for {image_name}: {result.stdout[:500]}")
-            output_data = json.loads(result.stdout)
+            # CHPS output has "Using local image: ..." prefix before JSON, skip it
+            output_text = result.stdout.strip()
 
-            # Extract score and grade
-            score = output_data.get("score", 0.0)
-            grade = output_data.get("grade", "F")
+            # Find the start of JSON (first '{')
+            json_start = output_text.find('{')
+            if json_start == -1:
+                logger.warning(f"No JSON found in CHPS output for {image_name}")
+                return None
+
+            json_text = output_text[json_start:]
+            logger.debug(f"CHPS JSON output for {image_name}: {json_text[:200]}...")
+
+            output_data = json.loads(json_text)
+
+            # Extract score and grade from the JSON structure
+            # CHPS returns: {"scores": {"minimalism": {"score": X, "grade": "A"}}}
+            scores = output_data.get("scores", {})
+            minimalism = scores.get("minimalism", {})
+
+            score = minimalism.get("score", 0.0)
+            grade = minimalism.get("grade", "F")
 
             # Store detailed breakdown
             details = {
-                "categories": output_data.get("categories", {}),
-                "checks": output_data.get("checks", {}),
+                "scores": scores,  # Include all scores
+                "image": output_data.get("image", ""),
+                "digest": output_data.get("digest", ""),
             }
 
             logger.info(f"CHPS scan complete for {image_name}: Score={score}, Grade={grade}")
