@@ -63,21 +63,21 @@ Examples:
         """,
     )
 
-    # Required arguments
-    required = parser.add_argument_group("required arguments")
-    required.add_argument(
+    # Input/Output arguments
+    io_group = parser.add_argument_group("input/output")
+    io_group.add_argument(
         "-s",
         "--source",
         type=Path,
-        required=True,
-        help="Source CSV file with image pairs (alternative_image,chainguard_image)",
+        default=Path("images.csv"),
+        help="Source CSV file with image pairs (default: images.csv)",
     )
-    required.add_argument(
+    io_group.add_argument(
         "-o",
         "--output",
         type=Path,
-        required=True,
-        help="Output file path (.html or .xlsx)",
+        default=Path("gauge_output"),
+        help="Output file path or base name for --both (default: gauge_output)",
     )
 
     # Output type
@@ -90,7 +90,8 @@ Examples:
     format_group.add_argument(
         "--both",
         action="store_true",
-        help="Generate both HTML and XLSX outputs (uses --output as base filename)",
+        default=True,
+        help="Generate both HTML and XLSX outputs (default: True)",
     )
 
     # Common options
@@ -120,13 +121,15 @@ Examples:
         "-e",
         "--exec-summary",
         type=Path,
-        help="Markdown file for executive summary",
+        default=Path("exec-summary.md"),
+        help="Markdown file for executive summary (default: exec-summary.md)",
     )
     html_opts.add_argument(
         "-a",
         "--appendix",
         type=Path,
-        help="Markdown file for custom appendix",
+        default=Path("appendix.md"),
+        help="Markdown file for custom appendix (default: appendix.md)",
     )
 
     # XLSX-specific options (cost analysis)
@@ -329,12 +332,15 @@ def main():
 
         # Generate HTML assessment summary
         html_generator = HTMLGenerator()
+        # Only pass exec-summary and appendix if they exist
+        exec_summary = args.exec_summary if args.exec_summary.exists() else None
+        appendix = args.appendix if args.appendix.exists() else None
         html_generator.generate(
             results=results,
             output_path=html_path,
             customer_name=args.customer_name,
-            exec_summary_path=args.exec_summary,
-            appendix_path=args.appendix,
+            exec_summary_path=exec_summary,
+            appendix_path=appendix,
         )
 
         # Generate XLSX cost analysis
@@ -366,12 +372,15 @@ def main():
 
     elif output_format == "html":
         generator = HTMLGenerator()
+        # Only pass exec-summary and appendix if they exist
+        exec_summary = args.exec_summary if args.exec_summary.exists() else None
+        appendix = args.appendix if args.appendix.exists() else None
         generator.generate(
             results=results,
             output_path=args.output,
             customer_name=args.customer_name,
-            exec_summary_path=args.exec_summary,
-            appendix_path=args.appendix,
+            exec_summary_path=exec_summary,
+            appendix_path=appendix,
         )
         output_files = [args.output]
 

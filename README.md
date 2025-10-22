@@ -63,6 +63,20 @@ pip install -e .
 
 ## Quick Start
 
+### Simplest Usage (with defaults)
+
+With sensible defaults, you can run Gauge with minimal configuration:
+
+```bash
+gauge
+```
+
+This will:
+- Read from `images.csv`
+- Generate both `gauge_output.html` and `gauge_output.xlsx`
+- Use `exec-summary.md` and `appendix.md` if they exist
+- Use default ROI parameters (3 hours/CVE, $100/hour)
+
 ### Generate Vulnerability Cost Analysis (XLSX)
 
 Generate a comprehensive cost analysis with ROI calculations:
@@ -70,9 +84,7 @@ Generate a comprehensive cost analysis with ROI calculations:
 ```bash
 gauge --source images.csv \
       --output cost-analysis.xlsx \
-      --customer "Acme Corp" \
-      --hours-per-vuln 3 \
-      --hourly-rate 100
+      --customer "Acme Corp"
 ```
 
 ### Generate Vulnerability Assessment Summary (HTML)
@@ -82,9 +94,7 @@ Generate an executive assessment summary report:
 ```bash
 gauge --source images.csv \
       --output assessment.html \
-      --customer "Acme Corp" \
-      --exec-summary summary.md \
-      --appendix appendix.md
+      --customer "Acme Corp"
 ```
 
 ### Generate Both Outputs
@@ -95,8 +105,7 @@ Generate both assessment summary (HTML) and cost analysis (XLSX):
 gauge --source images.csv \
       --output report \
       --both \
-      --customer "Acme Corp" \
-      --exec-summary summary.md
+      --customer "Acme Corp"
 ```
 
 This will create `report.html` and `report.xlsx`.
@@ -126,19 +135,19 @@ Optional header row is automatically skipped.
 
 ## Command-Line Options
 
-### Required Arguments
+### Input/Output Options
 
-| Option | Description |
-|--------|-------------|
-| `-s, --source` | Source CSV file with image pairs |
-| `-o, --output` | Output file path (.html, .xlsx, or base name for --both) |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-s, --source` | `images.csv` | Source CSV file with image pairs |
+| `-o, --output` | `gauge_output` | Output file path or base name for --both |
 
 ### Output Type
 
-| Option | Description |
-|--------|-------------|
-| `--format {html,xlsx,both}` | Output type: 'html' for assessment summary, 'xlsx' for cost analysis, 'both' for both (auto-detected from extension) |
-| `--both` | Generate both HTML and XLSX outputs (uses --output as base filename) |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--format {html,xlsx,both}` | - | Output type (auto-detected from extension if not specified) |
+| `--both` | `True` | Generate both HTML and XLSX outputs |
 
 ### Common Options
 
@@ -151,10 +160,10 @@ Optional header row is automatically skipped.
 
 ### Assessment Summary Options (HTML)
 
-| Option | Description |
-|--------|-------------|
-| `-e, --exec-summary` | Markdown file for executive summary |
-| `-a, --appendix` | Markdown file for custom appendix |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-e, --exec-summary` | `exec-summary.md` | Markdown file for executive summary (optional if file doesn't exist) |
+| `-a, --appendix` | `appendix.md` | Markdown file for custom appendix (optional if file doesn't exist) |
 
 ### Cost Analysis Options (XLSX)
 
