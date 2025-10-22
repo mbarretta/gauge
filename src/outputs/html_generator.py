@@ -19,7 +19,7 @@ from core.models import ScanResult, ImageAnalysis
 logger = logging.getLogger(__name__)
 
 # Chainguard logo URL
-CHAINGUARD_LOGO_URL = "https://edu.chainguard.dev/open-source/wolfi/logos/Chainguard_Enforce_logo_white-1.svg"
+CHAINGUARD_LOGO_URL = "resources/linky-white.png"
 
 class HTMLGenerator:
     """
@@ -162,10 +162,10 @@ class HTMLGenerator:
         self,
         customer_name: str,
         css_content: str,
-        exec_summary: str,
+        exec_summary: Optional[str],
         metrics: dict,
         image_pairs: list,
-        appendix_content: str,
+        appendix_content: Optional[str],
         results: list[ScanResult],
     ) -> str:
         """Build complete HTML document."""
@@ -183,6 +183,38 @@ class HTMLGenerator:
             logger.info("CHPS scores detected, adding CHPS section to HTML report")
             chps_section = self._generate_chps_section(results)
 
+        # Build executive summary section if provided
+        exec_summary_section = ""
+        if exec_summary:
+            exec_summary_section = f"""
+        <!-- Executive Summary -->
+        <div class="image-comparison-section no-break">
+            <h2>Executive Summary</h2>
+            {exec_summary}
+        </div>"""
+
+        # Build appendix section if provided
+        appendix_section = ""
+        if appendix_content:
+            appendix_section = f"""
+        <!-- Appendix Section -->
+        <div class="appendix-content">
+            <h2>Appendix</h2>
+            {appendix_content}
+
+            <!-- Footer integrated within appendix container -->
+            <div class="footer">
+                <p>This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}</p>
+            </div>
+        </div>"""
+        else:
+            # If no appendix, add footer outside appendix container
+            appendix_section = f"""
+        <!-- Footer -->
+        <div class="footer">
+            <p>This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}</p>
+        </div>"""
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -199,12 +231,7 @@ class HTMLGenerator:
             <h1>Vulnerability Comparison Report</h1>
             <p>A comprehensive analysis comparing vulnerabilities in your container images versus Chainguard's hardened alternatives.</p>
         </div>
-
-        <!-- Executive Summary -->
-        <div class="image-comparison-section no-break">
-            <h2>Executive Summary</h2>
-            {exec_summary}
-        </div>
+{exec_summary_section}
 
         <!-- CVE Reduction Metrics -->
         <div class="image-comparison-section no-break cve-reduction-section">
@@ -267,17 +294,7 @@ class HTMLGenerator:
         </div>
 
         {chps_section}
-
-        <!-- Appendix Section -->
-        <div class="appendix-content">
-            <h2>Appendix</h2>
-            {appendix_content}
-
-            <!-- Footer integrated within appendix container -->
-            <div class="footer">
-                <p>This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}</p>
-            </div>
-        </div>
+{appendix_section}
     </div>
 </body>
 </html>"""
@@ -448,10 +465,10 @@ class HTMLGenerator:
         </div>
 """
 
-    def _load_exec_summary(self, path: Optional[Path], metrics: dict, customer_name: str) -> str:
+    def _load_exec_summary(self, path: Optional[Path], metrics: dict, customer_name: str) -> Optional[str]:
         """Load and format executive summary with template variable substitution."""
         if not path or not path.exists():
-            return "<p>No executive summary provided.</p>"
+            return None
 
         try:
             with open(path, "r") as f:
@@ -476,56 +493,12 @@ class HTMLGenerator:
 
         except Exception as e:
             logger.warning(f"Could not load executive summary: {e}")
-            return "<p>No executive summary provided.</p>"
+            return None
 
-    def _load_appendix(self, path: Optional[Path], metrics: dict, customer_name: str) -> str:
+    def _load_appendix(self, path: Optional[Path], metrics: dict, customer_name: str) -> Optional[str]:
         """Load and format appendix with template variable substitution."""
-        # Default appendix content
-        default_content = """
-                <div class="appendix-section">
-                    <h3>Methodology</h3>
-                    <p>This report was generated using the following methodology:</p>
-                    <ul>
-                        <li><strong>Scanning Tool:</strong> Grype vulnerability scanner</li>
-                        <li><strong>SBOM Generation:</strong> Syft for Software Bill of Materials</li>
-                        <li><strong>Data Sources:</strong> National Vulnerability Database (NVD) and other security databases</li>
-                        <li><strong>Image Analysis:</strong> Container images were scanned for known vulnerabilities</li>
-                        <li><strong>Comparison:</strong> Customer images compared against Chainguard hardened alternatives</li>
-                    </ul>
-                </div>
-
-                <!-- Strategic page break marker with continuation header -->
-                <div class="appendix-page-break">
-                    <h2 class="appendix-continuation">Appendix (continued)</h2>
-                </div>
-
-                <div class="appendix-section">
-                    <h3>Severity Levels</h3>
-                    <p>Vulnerabilities are classified using the following severity levels:</p>
-                    <ul>
-                        <li><strong>Critical:</strong> Vulnerabilities with CVSS scores of 9.0-10.0</li>
-                        <li><strong>High:</strong> Vulnerabilities with CVSS scores of 7.0-8.9</li>
-                        <li><strong>Medium:</strong> Vulnerabilities with CVSS scores of 4.0-6.9</li>
-                        <li><strong>Low:</strong> Vulnerabilities with CVSS scores of 0.1-3.9</li>
-                        <li><strong>Negligible:</strong> Vulnerabilities with minimal impact</li>
-                    </ul>
-                </div>
-
-                <div class="appendix-section">
-                    <h3>About Chainguard Images</h3>
-                    <p>Chainguard Images are container images built with security-first principles:</p>
-                    <ul>
-                        <li><strong>Minimal Base:</strong> Built on minimal base images to reduce attack surface</li>
-                        <li><strong>Distroless:</strong> Contains only application dependencies, no package managers</li>
-                        <li><strong>Regular Updates:</strong> Continuously updated with latest security patches</li>
-                        <li><strong>Zero CVEs:</strong> Many images maintain zero known vulnerabilities</li>
-                        <li><strong>SBOM Included:</strong> Software Bill of Materials for transparency</li>
-                        <li><strong>Provenance Tracking:</strong> Complete software supply chain transparency with cryptographic attestations and verifiable build processes</li>
-                    </ul>
-                </div>"""
-
         if not path or not path.exists():
-            return f"<div>{default_content}</div>"
+            return None
 
         try:
             with open(path, "r") as f:
@@ -545,14 +518,12 @@ class HTMLGenerator:
                 content = content.replace(f"{{{{{key}}}}}", value)
 
             # Convert markdown to HTML
-            custom_content = markdown.markdown(content)
-
-            # Combine custom content with default content
-            return f"<div>{custom_content}{default_content}</div>"
+            html_content = markdown.markdown(content)
+            return html_content
 
         except Exception as e:
             logger.warning(f"Could not load appendix: {e}")
-            return f"<div>{default_content}</div>"
+            return None
 
     def _get_embedded_css(self) -> str:
         """Return embedded CSS content optimized for PDF conversion with Chainguard theme."""
