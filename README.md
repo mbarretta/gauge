@@ -1,11 +1,14 @@
+<img src="resources/gauge-logo-white.png" width="400" alt="Gauge Logo">
+
 # Gauge
 
-**Gauge your container security posture** - A unified, production-grade tool for comprehensive container vulnerability assessments comparing images with Chainguard alternatives.
+**Gauge your container security posture** - A unified tool for comprehensive container vulnerability assessments comparing the risks, the costs, and the "hardeness" (via [CHPs](https://github.com/chps-dev/chps)) of other container images as compared to [Chainguard Containers](https://www.chainguard.dev/containers).
 
 ## Features
 
 ### Core Capabilities
 - **Dual Output Types**: Generate vulnerability assessment summaries (HTML) or cost analysis reports (XLSX)
+- **CHPs Scoring**: Container Hardening and Provenance Scanner integration for evaluating non-CVE security factors like provenance, SBOM quality, signing, and container hardening practices
 - **Intelligent Caching**: Digest-based caching dramatically improves performance on repeated scans
 - **Parallel Scanning**: Multi-threaded image scanning for optimal performance
 - **Comprehensive Analysis**: Detailed vulnerability breakdowns by severity (Critical, High, Medium, Low, Negligible)
