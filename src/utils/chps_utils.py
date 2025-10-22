@@ -48,21 +48,29 @@ class CHPSScanner:
     def _check_chps_available(self) -> bool:
         """Check if CHPS container image is available."""
         try:
+            logger.info(f"Checking CHPS image availability: {CHPS_IMAGE}")
             # Try to pull the CHPS image if not already present
             result = subprocess.run(
                 [self.docker_command, "pull", CHPS_IMAGE],
                 capture_output=True,
                 text=True,
-                timeout=60,
+                timeout=120,
             )
             if result.returncode == 0:
-                logger.info(f"CHPS scorer container image ready: {CHPS_IMAGE}")
+                logger.info(f"✓ CHPS scorer container image ready: {CHPS_IMAGE}")
                 return True
             else:
-                logger.debug(f"Failed to pull CHPS image: {result.stderr}")
+                logger.warning(f"✗ Failed to pull CHPS image: {result.stderr}")
+                logger.warning(f"CHPS stdout: {result.stdout}")
                 return False
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-            logger.debug(f"CHPS availability check failed: {e}")
+        except FileNotFoundError as e:
+            logger.warning(f"✗ Docker/Podman command not found: {e}")
+            return False
+        except subprocess.TimeoutExpired:
+            logger.warning(f"✗ Timeout pulling CHPS image (120s)")
+            return False
+        except Exception as e:
+            logger.warning(f"✗ CHPS availability check failed: {e}")
             return False
 
     def scan_image(self, image_name: str) -> Optional[CHPSScore]:
