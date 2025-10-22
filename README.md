@@ -87,6 +87,20 @@ gauge --source images.csv \
       --appendix appendix.md
 ```
 
+### Generate Both Outputs
+
+Generate both assessment summary (HTML) and cost analysis (XLSX):
+
+```bash
+gauge --source images.csv \
+      --output report \
+      --both \
+      --customer "Acme Corp" \
+      --exec-summary summary.md
+```
+
+This will create `report.html` and `report.xlsx`.
+
 ### With FIPS Cost Analysis
 
 Add FIPS implementation cost calculations (XLSX only):
@@ -117,13 +131,14 @@ Optional header row is automatically skipped.
 | Option | Description |
 |--------|-------------|
 | `-s, --source` | Source CSV file with image pairs |
-| `-o, --output` | Output file path (.html or .xlsx) |
+| `-o, --output` | Output file path (.html, .xlsx, or base name for --both) |
 
 ### Output Type
 
 | Option | Description |
 |--------|-------------|
-| `--format {html,xlsx}` | Output type: 'html' for assessment summary, 'xlsx' for cost analysis (auto-detected from extension) |
+| `--format {html,xlsx,both}` | Output type: 'html' for assessment summary, 'xlsx' for cost analysis, 'both' for both (auto-detected from extension) |
+| `--both` | Generate both HTML and XLSX outputs (uses --output as base filename) |
 
 ### Common Options
 
@@ -275,6 +290,22 @@ gauge --source production-images.csv \
       --auto-detect-fips \
       --max-workers 8
 ```
+
+### Generate Both Outputs
+
+Generate both assessment summary and cost analysis in one scan:
+
+```bash
+gauge --source my-images.csv \
+      --output complete-report \
+      --both \
+      --customer "Acme Corp" \
+      --exec-summary summary.md \
+      --hours-per-vuln 4 \
+      --hourly-rate 125
+```
+
+This creates `complete-report.html` and `complete-report.xlsx`.
 
 ### High-Performance Scan
 

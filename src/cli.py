@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
 Output Types:
   HTML  - Vulnerability assessment summary report
   XLSX  - Vulnerability cost analysis with ROI calculations
+  BOTH  - Generate both HTML and XLSX reports
 
 Examples:
   # Generate vulnerability cost analysis (XLSX)
@@ -50,6 +51,10 @@ Examples:
 
   # Generate vulnerability assessment summary (HTML)
   gauge --source images.csv --output assessment.html \\
+        --customer "Acme Corp" --exec-summary summary.md
+
+  # Generate both outputs
+  gauge --source images.csv --output report --both \\
         --customer "Acme Corp" --exec-summary summary.md
 
   # Include FIPS cost analysis (XLSX only)
@@ -79,8 +84,13 @@ Examples:
     format_group = parser.add_argument_group("output type")
     format_group.add_argument(
         "--format",
-        choices=["html", "xlsx"],
-        help="Output type: 'html' for assessment summary, 'xlsx' for cost analysis (auto-detected from extension)",
+        choices=["html", "xlsx", "both"],
+        help="Output type: 'html' for assessment summary, 'xlsx' for cost analysis, 'both' for both (auto-detected from extension)",
+    )
+    format_group.add_argument(
+        "--both",
+        action="store_true",
+        help="Generate both HTML and XLSX outputs (uses --output as base filename)",
     )
 
     # Common options
@@ -231,8 +241,11 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
     return pairs
 
 
-def detect_output_format(output_path: Path, specified_format: str = None) -> str:
+def detect_output_format(output_path: Path, specified_format: str = None, both_flag: bool = False) -> str:
     """Detect output format from file extension or specified format."""
+    if both_flag or specified_format == "both":
+        return "both"
+
     if specified_format:
         return specified_format.lower()
 
@@ -244,7 +257,7 @@ def detect_output_format(output_path: Path, specified_format: str = None) -> str
     else:
         logger.error(
             f"Could not detect output format from extension: {suffix}. "
-            "Please specify --format explicitly."
+            "Please specify --format explicitly or use --both."
         )
         sys.exit(1)
 
@@ -258,8 +271,13 @@ def main():
     logger.info("=" * 60)
 
     # Detect output type
-    output_format = detect_output_format(args.output, args.format)
-    output_type = "Vulnerability Cost Analysis" if output_format == "xlsx" else "Vulnerability Assessment Summary"
+    output_format = detect_output_format(args.output, args.format, args.both)
+    if output_format == "both":
+        output_type = "Both Assessment Summary (HTML) and Cost Analysis (XLSX)"
+    elif output_format == "xlsx":
+        output_type = "Vulnerability Cost Analysis"
+    else:
+        output_type = "Vulnerability Assessment Summary"
     logger.info(f"Output type: {output_type} ({output_format.upper()})")
 
     # Load image pairs
@@ -302,8 +320,38 @@ def main():
     # Show cache summary
     logger.info(cache.summary())
 
-    # Generate report based on format
-    if output_format == "xlsx":
+    # Generate report(s) based on format
+    if output_format == "both":
+        # Generate both outputs with appropriate extensions
+        base_path = args.output.with_suffix("")
+        html_path = base_path.with_suffix(".html")
+        xlsx_path = base_path.with_suffix(".xlsx")
+
+        # Generate HTML assessment summary
+        html_generator = HTMLGenerator()
+        html_generator.generate(
+            results=results,
+            output_path=html_path,
+            customer_name=args.customer_name,
+            exec_summary_path=args.exec_summary,
+            appendix_path=args.appendix,
+        )
+
+        # Generate XLSX cost analysis
+        xlsx_generator = XLSXGenerator()
+        xlsx_generator.generate(
+            results=results,
+            output_path=xlsx_path,
+            customer_name=args.customer_name,
+            hours_per_vuln=args.hours_per_vuln,
+            hourly_rate=args.hourly_rate,
+            fips_count=args.fips_count,
+            auto_detect_fips=args.auto_detect_fips,
+        )
+
+        output_files = [html_path, xlsx_path]
+
+    elif output_format == "xlsx":
         generator = XLSXGenerator()
         generator.generate(
             results=results,
@@ -314,6 +362,8 @@ def main():
             fips_count=args.fips_count,
             auto_detect_fips=args.auto_detect_fips,
         )
+        output_files = [args.output]
+
     elif output_format == "html":
         generator = HTMLGenerator()
         generator.generate(
@@ -323,13 +373,19 @@ def main():
             exec_summary_path=args.exec_summary,
             appendix_path=args.appendix,
         )
+        output_files = [args.output]
 
     # Summary
     successful = sum(1 for r in results if r.scan_successful)
     failed = len(results) - successful
 
     logger.info("=" * 60)
-    logger.info(f"Report generated: {args.output}")
+    if output_format == "both":
+        logger.info(f"Reports generated:")
+        for f in output_files:
+            logger.info(f"  - {f}")
+    else:
+        logger.info(f"Report generated: {args.output}")
     logger.info(f"Scanned: {successful} successful, {failed} failed")
     logger.info("Done!")
 
