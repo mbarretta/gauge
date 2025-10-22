@@ -99,6 +99,26 @@ class HTMLGenerator(OutputGenerator):
         reduction = total_customer_vulns - total_cgr_vulns
         reduction_pct = (reduction / total_customer_vulns * 100) if total_customer_vulns > 0 else 0
 
+        # Calculate images with reduction
+        images_with_reduction = sum(
+            1 for r in results
+            if r.alternative_analysis.vulnerabilities.total > r.chainguard_analysis.vulnerabilities.total
+        )
+
+        # Calculate average reduction per image
+        average_reduction = reduction / len(results) if len(results) > 0 else 0
+
+        # Template variables for exec summary and appendix
+        template_vars = {
+            "customer_name": customer_name,
+            "images_scanned": str(len(results)),
+            "total_customer_vulns": str(total_customer_vulns),
+            "total_chainguard_vulns": str(total_cgr_vulns),
+            "reduction_percentage": f"{reduction_pct:.1f}%",
+            "images_with_reduction": str(images_with_reduction),
+            "average_reduction_per_image": f"{average_reduction:.1f}",
+        }
+
         # Build HTML sections
         html_parts = [
             self._html_header(),
@@ -106,7 +126,7 @@ class HTMLGenerator(OutputGenerator):
         ]
 
         if exec_summary_path:
-            html_parts.append(self._html_exec_summary(exec_summary_path))
+            html_parts.append(self._html_exec_summary(exec_summary_path, template_vars))
 
         html_parts.extend([
             self._html_reduction_summary(reduction, reduction_pct, len(results)),
@@ -114,7 +134,7 @@ class HTMLGenerator(OutputGenerator):
         ])
 
         if appendix_path:
-            html_parts.append(self._html_appendix(appendix_path))
+            html_parts.append(self._html_appendix(appendix_path, template_vars))
 
         html_parts.extend([
             self._html_methodology(),
@@ -213,11 +233,16 @@ class HTMLGenerator(OutputGenerator):
     <p>Powered by Chainguard</p>
 </div>"""
 
-    def _html_exec_summary(self, path: Path) -> str:
-        """Load and format executive summary."""
+    def _html_exec_summary(self, path: Path, template_vars: dict[str, str]) -> str:
+        """Load and format executive summary with template variable substitution."""
         try:
             with open(path, "r") as f:
                 content = f.read()
+
+            # Replace template variables ({{variable_name}})
+            for key, value in template_vars.items():
+                content = content.replace(f"{{{{{key}}}}}", value)
+
             return f"<div class='summary'>{content}</div>"
         except Exception as e:
             logger.warning(f"Could not load executive summary: {e}")
@@ -285,11 +310,16 @@ class HTMLGenerator(OutputGenerator):
     </tbody>
 </table>"""
 
-    def _html_appendix(self, path: Path) -> str:
-        """Load and format appendix."""
+    def _html_appendix(self, path: Path, template_vars: dict[str, str]) -> str:
+        """Load and format appendix with template variable substitution."""
         try:
             with open(path, "r") as f:
                 content = f.read()
+
+            # Replace template variables ({{variable_name}})
+            for key, value in template_vars.items():
+                content = content.replace(f"{{{{{key}}}}}", value)
+
             return f"<h2>Appendix</h2>{content}"
         except Exception as e:
             logger.warning(f"Could not load appendix: {e}")
