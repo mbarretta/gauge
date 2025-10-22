@@ -40,26 +40,28 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Output Types:
-  HTML  - Vulnerability assessment summary report
-  XLSX  - Vulnerability cost analysis with ROI calculations
-  BOTH  - Generate both HTML and XLSX reports
+  cost_analysis  - Vulnerability cost analysis with ROI calculations (XLSX)
+  vuln_summary   - Vulnerability assessment summary report (HTML)
+  both           - Generate both HTML and XLSX reports
 
 Examples:
+  # Simplest usage (uses all defaults)
+  gauge
+
   # Generate vulnerability cost analysis (XLSX)
-  gauge --source images.csv --output analysis.xlsx \\
+  gauge --output cost_analysis --output-file-name analysis \\
         --customer "Acme Corp" --hours-per-vuln 3 --hourly-rate 100
 
   # Generate vulnerability assessment summary (HTML)
-  gauge --source images.csv --output assessment.html \\
+  gauge --output vuln_summary --output-file-name assessment \\
         --customer "Acme Corp" --exec-summary summary.md
 
   # Generate both outputs
-  gauge --source images.csv --output report --both \\
+  gauge --output both --output-file-name report \\
         --customer "Acme Corp" --exec-summary summary.md
 
-  # Include FIPS cost analysis (XLSX only)
-  gauge --source images.csv --output cost-analysis.xlsx \\
-        --fips-count 5
+  # Include FIPS cost analysis (cost_analysis only)
+  gauge --output cost_analysis --fips-count 5
         """,
     )
 
@@ -75,23 +77,15 @@ Examples:
     io_group.add_argument(
         "-o",
         "--output",
-        type=Path,
-        default=Path("gauge_output"),
-        help="Output file path or base name for --both (default: gauge_output)",
+        choices=["cost_analysis", "vuln_summary", "both"],
+        default="both",
+        help="Output type: 'cost_analysis' (XLSX), 'vuln_summary' (HTML), or 'both' (default: both)",
     )
-
-    # Output type
-    format_group = parser.add_argument_group("output type")
-    format_group.add_argument(
-        "--format",
-        choices=["html", "xlsx", "both"],
-        help="Output type: 'html' for assessment summary, 'xlsx' for cost analysis, 'both' for both (auto-detected from extension)",
-    )
-    format_group.add_argument(
-        "--both",
-        action="store_true",
-        default=True,
-        help="Generate both HTML and XLSX outputs (default: True)",
+    io_group.add_argument(
+        "--output-file-name",
+        type=str,
+        default="gauge_output",
+        help="Base filename for output files (default: gauge_output)",
     )
 
     # Common options
@@ -244,25 +238,6 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
     return pairs
 
 
-def detect_output_format(output_path: Path, specified_format: str = None, both_flag: bool = False) -> str:
-    """Detect output format from file extension or specified format."""
-    if both_flag or specified_format == "both":
-        return "both"
-
-    if specified_format:
-        return specified_format.lower()
-
-    suffix = output_path.suffix.lower()
-    if suffix in [".xlsx", ".xls"]:
-        return "xlsx"
-    elif suffix in [".html", ".htm"]:
-        return "html"
-    else:
-        logger.error(
-            f"Could not detect output format from extension: {suffix}. "
-            "Please specify --format explicitly or use --both."
-        )
-        sys.exit(1)
 
 
 def main():
@@ -273,15 +248,15 @@ def main():
     logger.info("Gauge - Container Vulnerability Assessment v2.0")
     logger.info("=" * 60)
 
-    # Detect output type
-    output_format = detect_output_format(args.output, args.format, args.both)
+    # Determine output type from args.output
+    output_format = args.output
     if output_format == "both":
         output_type = "Both Assessment Summary (HTML) and Cost Analysis (XLSX)"
-    elif output_format == "xlsx":
-        output_type = "Vulnerability Cost Analysis"
-    else:
-        output_type = "Vulnerability Assessment Summary"
-    logger.info(f"Output type: {output_type} ({output_format.upper()})")
+    elif output_format == "cost_analysis":
+        output_type = "Vulnerability Cost Analysis (XLSX)"
+    else:  # vuln_summary
+        output_type = "Vulnerability Assessment Summary (HTML)"
+    logger.info(f"Output type: {output_type}")
 
     # Load image pairs
     pairs = load_image_pairs(args.source)
@@ -323,12 +298,11 @@ def main():
     # Show cache summary
     logger.info(cache.summary())
 
-    # Generate report(s) based on format
+    # Generate report(s) based on output type
     if output_format == "both":
         # Generate both outputs with appropriate extensions
-        base_path = args.output.with_suffix("")
-        html_path = base_path.with_suffix(".html")
-        xlsx_path = base_path.with_suffix(".xlsx")
+        html_path = Path(f"{args.output_file_name}.html")
+        xlsx_path = Path(f"{args.output_file_name}.xlsx")
 
         # Generate HTML assessment summary
         html_generator = HTMLGenerator()
@@ -357,32 +331,36 @@ def main():
 
         output_files = [html_path, xlsx_path]
 
-    elif output_format == "xlsx":
+    elif output_format == "cost_analysis":
+        # Generate XLSX cost analysis
+        xlsx_path = Path(f"{args.output_file_name}.xlsx")
         generator = XLSXGenerator()
         generator.generate(
             results=results,
-            output_path=args.output,
+            output_path=xlsx_path,
             customer_name=args.customer_name,
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             fips_count=args.fips_count,
             auto_detect_fips=args.auto_detect_fips,
         )
-        output_files = [args.output]
+        output_files = [xlsx_path]
 
-    elif output_format == "html":
+    elif output_format == "vuln_summary":
+        # Generate HTML assessment summary
+        html_path = Path(f"{args.output_file_name}.html")
         generator = HTMLGenerator()
         # Only pass exec-summary and appendix if they exist
         exec_summary = args.exec_summary if args.exec_summary.exists() else None
         appendix = args.appendix if args.appendix.exists() else None
         generator.generate(
             results=results,
-            output_path=args.output,
+            output_path=html_path,
             customer_name=args.customer_name,
             exec_summary_path=exec_summary,
             appendix_path=appendix,
         )
-        output_files = [args.output]
+        output_files = [html_path]
 
     # Summary
     successful = sum(1 for r in results if r.scan_successful)
@@ -394,7 +372,7 @@ def main():
         for f in output_files:
             logger.info(f"  - {f}")
     else:
-        logger.info(f"Report generated: {args.output}")
+        logger.info(f"Report generated: {output_files[0]}")
     logger.info(f"Scanned: {successful} successful, {failed} failed")
     logger.info("Done!")
 

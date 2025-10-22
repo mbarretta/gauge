@@ -58,10 +58,10 @@ python3 cve_scanner.py \\
 
 **New Command:**
 ```bash
-python -m gauge \\
+gauge \\
   -s images.csv \\
-  -o report.html \\
-  --format html \\
+  -o vuln_summary \\
+  --output-file-name report \\
   -e exec-summary.md \\
   -a appendix.md \\
   -c "Acme Corp" \\
@@ -69,8 +69,9 @@ python -m gauge \\
 ```
 
 **Changes:**
-- Use `python -m gauge` instead of `python3 cve_scanner.py`
-- Add `--format html` (optional if output has .html extension)
+- Use `gauge` instead of `python3 cve_scanner.py`
+- Use `-o vuln_summary` to specify HTML output
+- Add `--output-file-name report` for output filename (creates `report.html`)
 - All other arguments remain the same
 
 #### From `minibva` (Vulnerability Cost Analysis - XLSX)
@@ -87,10 +88,10 @@ python3 minibva.py \\
 
 **New Command:**
 ```bash
-python -m gauge \\
+gauge \\
   -s images.txt \\
-  -o "Acme Corp Image Comparison (ROI).xlsx" \\
-  --format xlsx \\
+  -o cost_analysis \\
+  --output-file-name "Acme Corp Image Comparison (ROI)" \\
   --customer "Acme Corp" \\
   --hours-per-vuln 3 \\
   --hourly-rate 100 \\
@@ -98,14 +99,14 @@ python -m gauge \\
 ```
 
 **Changes:**
-- Use `python -m gauge` instead of `python3 minibva.py`
+- Use `gauge` instead of `python3 minibva.py`
 - `-s` instead of `--list` (same file format)
-- Explicit `-o` for output path (was auto-generated before)
+- Use `-o cost_analysis` to specify XLSX output
+- `--output-file-name` for the filename (creates `.xlsx` file)
 - `--customer` instead of `--customername`
 - `--hours-per-vuln` instead of `--vulnhours`
 - `--hourly-rate` instead of `--hourlyrate`
 - `--fips-count` instead of `--fips`
-- Add `--format xlsx` (optional if output has .xlsx extension)
 
 ### Step 3: Update Input Files (if needed)
 
@@ -234,7 +235,7 @@ migrate_minibva() {
 python3 cve_scanner.py -s test.csv -o old-report.html
 
 # New tool
-python -m gauge -s test.csv -o new-report.html
+gauge -s test.csv -o vuln_summary --output-file-name new-report
 
 # Compare outputs (should be nearly identical)
 diff old-report.html new-report.html
@@ -244,10 +245,10 @@ diff old-report.html new-report.html
 
 ```bash
 # Old tool
-python3 minibva.py --list test.txt --customername "Test" --output old.xlsx
+python3 minibva.py --list test.txt --customername "Test"
 
 # New tool
-python -m gauge -s test.txt -o new.xlsx --customer "Test"
+gauge -s test.txt -o cost_analysis --output-file-name test --customer "Test"
 
 # Open both in Excel/LibreOffice and compare
 ```
@@ -284,7 +285,7 @@ If you need to rollback:
 
 1. Check this migration guide
 2. Review `README.md` for detailed documentation
-3. Use `python -m gauge --help` for CLI reference
+3. Use `gauge --help` for CLI reference
 4. Contact your Chainguard representative
 
 ## Benefits Summary

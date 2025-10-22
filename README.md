@@ -82,29 +82,32 @@ This will:
 Generate a comprehensive cost analysis with ROI calculations:
 
 ```bash
-gauge --source images.csv \
-      --output cost-analysis.xlsx \
+gauge --output cost_analysis \
+      --output-file-name cost-analysis \
       --customer "Acme Corp"
 ```
+
+This will create `cost-analysis.xlsx`.
 
 ### Generate Vulnerability Assessment Summary (HTML)
 
 Generate an executive assessment summary report:
 
 ```bash
-gauge --source images.csv \
-      --output assessment.html \
+gauge --output vuln_summary \
+      --output-file-name assessment \
       --customer "Acme Corp"
 ```
+
+This will create `assessment.html`.
 
 ### Generate Both Outputs
 
 Generate both assessment summary (HTML) and cost analysis (XLSX):
 
 ```bash
-gauge --source images.csv \
-      --output report \
-      --both \
+gauge --output both \
+      --output-file-name report \
       --customer "Acme Corp"
 ```
 
@@ -115,10 +118,12 @@ This will create `report.html` and `report.xlsx`.
 Add FIPS implementation cost calculations (XLSX only):
 
 ```bash
-gauge --source images.csv \
-      --output cost-analysis.xlsx \
+gauge --output cost_analysis \
+      --output-file-name cost-analysis \
       --auto-detect-fips
 ```
+
+This will create `cost-analysis.xlsx` with FIPS cost analysis included.
 
 ## Input Format
 
@@ -140,14 +145,8 @@ Optional header row is automatically skipped.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-s, --source` | `images.csv` | Source CSV file with image pairs |
-| `-o, --output` | `gauge_output` | Output file path or base name for --both |
-
-### Output Type
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--format {html,xlsx,both}` | - | Output type (auto-detected from extension if not specified) |
-| `--both` | `True` | Generate both HTML and XLSX outputs |
+| `-o, --output` | `both` | Output type: `cost_analysis` (XLSX), `vuln_summary` (HTML), or `both` |
+| `--output-file-name` | `gauge_output` | Base filename for output files |
 
 ### Common Options
 
@@ -282,9 +281,12 @@ Generate a simple assessment summary report:
 
 ```bash
 gauge --source my-images.csv \
-      --output assessment.html \
+      --output vuln_summary \
+      --output-file-name assessment \
       --customer "Acme Corporation"
 ```
+
+This creates `assessment.html`.
 
 ### Full Cost Analysis with FIPS
 
@@ -292,7 +294,8 @@ Generate a comprehensive cost analysis with ROI and FIPS calculations:
 
 ```bash
 gauge --source production-images.csv \
-      --output cost-analysis.xlsx \
+      --output cost_analysis \
+      --output-file-name cost-analysis \
       --customer "Acme Corp" \
       --hours-per-vuln 4 \
       --hourly-rate 125 \
@@ -300,14 +303,16 @@ gauge --source production-images.csv \
       --max-workers 8
 ```
 
+This creates `cost-analysis.xlsx`.
+
 ### Generate Both Outputs
 
 Generate both assessment summary and cost analysis in one scan:
 
 ```bash
 gauge --source my-images.csv \
-      --output complete-report \
-      --both \
+      --output both \
+      --output-file-name complete-report \
       --customer "Acme Corp" \
       --exec-summary summary.md \
       --hours-per-vuln 4 \
@@ -322,10 +327,13 @@ Maximize scanning speed for large fleets:
 
 ```bash
 gauge --source large-fleet.csv \
-      --output fleet-assessment.html \
+      --output vuln_summary \
+      --output-file-name fleet-assessment \
       --max-workers 12 \
       --no-fresh-check  # Skip freshness checks for speed
 ```
+
+This creates `fleet-assessment.html`.
 
 ## Troubleshooting
 
