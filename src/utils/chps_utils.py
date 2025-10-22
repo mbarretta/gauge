@@ -143,6 +143,11 @@ class CHPSScanner:
             score = minimalism.get("score", 0.0)
             grade = minimalism.get("grade", "F")
 
+            # Fix grade mapping - CHPS returns "E" for 0, but spec says it should be "F"
+            # Spec: 100=A+, 75-99=A, 50-74=B, 40-49=C, 1-39=D, 0=F
+            if grade == "E" or score == 0:
+                grade = "F"
+
             # Store detailed breakdown
             details = {
                 "scores": scores,  # Include all scores
