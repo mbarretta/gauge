@@ -123,7 +123,7 @@ gauge --output cost_analysis \
       --auto-detect-fips
 ```
 
-This will create `cost-analysis.xlsx` with FIPS cost analysis included.
+This will auto-detect FIPS images from their names and create `cost-analysis.xlsx` with FIPS cost analysis included.
 
 ### With CHPS Hardening & Provenance Scoring
 
@@ -184,7 +184,6 @@ Optional header row is automatically skipped.
 |--------|---------|-------------|
 | `--hours-per-vuln` | 3.0 | Average hours to remediate one CVE |
 | `--hourly-rate` | 100.0 | Engineering hourly rate in USD |
-| `--fips-count` | - | Number of FIPS images for cost calculation |
 | `--auto-detect-fips` | - | Auto-detect FIPS images from names |
 
 ### CHPS Integration

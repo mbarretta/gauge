@@ -51,7 +51,6 @@ class XLSXGenerator(OutputGenerator):
         customer_name: str = "Customer",
         hours_per_vuln: float = 3.0,
         hourly_rate: float = 100.0,
-        fips_count: Optional[int] = None,
         auto_detect_fips: bool = False,
         **kwargs,
     ) -> None:
@@ -64,7 +63,6 @@ class XLSXGenerator(OutputGenerator):
             customer_name: Customer name for report
             hours_per_vuln: Hours to remediate one CVE
             hourly_rate: Engineering hourly rate (USD)
-            fips_count: Number of FIPS images (None to skip FIPS calculations)
             auto_detect_fips: Auto-detect FIPS images from names
             **kwargs: Additional options
         """
@@ -80,12 +78,15 @@ class XLSXGenerator(OutputGenerator):
         cgr_analyses = [r.chainguard_analysis for r in successful]
 
         # Auto-detect FIPS if requested
+        fips_count = None
         if auto_detect_fips:
             fips_count = sum(
                 1 for a in cgr_analyses if "-fips" in a.name.lower()
             )
             if fips_count > 0:
                 logger.info(f"Auto-detected {fips_count} FIPS images")
+            else:
+                fips_count = None
 
         # Create workbook
         workbook = xlsxwriter.Workbook(str(output_path))
