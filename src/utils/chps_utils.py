@@ -102,9 +102,11 @@ class CHPSScanner:
 
             if result.returncode != 0:
                 logger.warning(f"CHPS scan failed for {image_name}: {result.stderr}")
+                logger.debug(f"CHPS stdout: {result.stdout}")
                 return None
 
             # Parse JSON output
+            logger.debug(f"CHPS raw output for {image_name}: {result.stdout[:500]}")
             output_data = json.loads(result.stdout)
 
             # Extract score and grade

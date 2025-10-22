@@ -118,7 +118,12 @@ class VulnerabilityScanner:
             # Run CHPS scoring if requested
             chps_score = None
             if self.chps_scanner:
+                logger.debug(f"Running CHPS scan for {image}")
                 chps_score = self.chps_scanner.scan_image(image)
+                if chps_score:
+                    logger.info(f"CHPS score for {image}: {chps_score.score} ({chps_score.grade})")
+                else:
+                    logger.warning(f"No CHPS score returned for {image}")
 
             # Create analysis result
             analysis = ImageAnalysis(

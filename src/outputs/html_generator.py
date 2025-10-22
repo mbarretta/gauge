@@ -136,8 +136,16 @@ class HTMLGenerator(OutputGenerator):
         ])
 
         # Add CHPS section if any results have CHPS scores
-        if any(r.chainguard_analysis and r.chainguard_analysis.chps_score for r in results):
+        has_chps = any(
+            (r.chainguard_analysis and r.chainguard_analysis.chps_score) or
+            (r.alternative_analysis and r.alternative_analysis.chps_score)
+            for r in results
+        )
+        if has_chps:
+            logger.info("CHPS scores detected, adding CHPS section to HTML report")
             html_parts.append(self._html_chps_section(results))
+        else:
+            logger.debug("No CHPS scores found in results")
 
         if appendix_path:
             html_parts.append(self._html_appendix(appendix_path, template_vars))

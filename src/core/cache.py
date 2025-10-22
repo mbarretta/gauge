@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from core.models import ImageAnalysis, VulnerabilityCount
+from core.models import ImageAnalysis, VulnerabilityCount, CHPSScore
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,17 @@ class ScanCache:
 
             # Reconstruct ImageAnalysis from cached data
             vuln_data = data.get("vulnerabilities", {})
+
+            # Reconstruct CHPS score if present
+            chps_score = None
+            if "chps_score" in data and data["chps_score"]:
+                chps_data = data["chps_score"]
+                chps_score = CHPSScore(
+                    score=chps_data.get("score", 0.0),
+                    grade=chps_data.get("grade", "F"),
+                    details=chps_data.get("details", {}),
+                )
+
             analysis = ImageAnalysis(
                 name=image_name,
                 size_mb=data.get("size_mb", 0.0),
@@ -110,6 +121,7 @@ class ScanCache:
                 scan_timestamp=datetime.fromisoformat(data.get("timestamp", datetime.now(timezone.utc).isoformat())),
                 digest=digest,
                 cache_hit=True,
+                chps_score=chps_score,
             )
 
             logger.debug(f"Cache hit for {image_name}")
@@ -153,6 +165,14 @@ class ScanCache:
                 "package_count": analysis.package_count,
                 "vulnerabilities": analysis.vulnerabilities.to_dict(),
             }
+
+            # Add CHPS score if present
+            if analysis.chps_score:
+                cache_entry["chps_score"] = {
+                    "score": analysis.chps_score.score,
+                    "grade": analysis.chps_score.grade,
+                    "details": analysis.chps_score.details,
+                }
 
             # Atomic write: write to temp file, then rename
             temp_path = cache_path.with_suffix(".tmp")
