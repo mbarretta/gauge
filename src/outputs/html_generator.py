@@ -10,6 +10,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import markdown
+
 from core.models import ScanResult
 from outputs.base import OutputGenerator
 
@@ -243,7 +245,10 @@ class HTMLGenerator(OutputGenerator):
             for key, value in template_vars.items():
                 content = content.replace(f"{{{{{key}}}}}", value)
 
-            return f"<div class='summary'>{content}</div>"
+            # Convert markdown to HTML
+            html_content = markdown.markdown(content)
+
+            return f"<div class='summary'>{html_content}</div>"
         except Exception as e:
             logger.warning(f"Could not load executive summary: {e}")
             return ""
@@ -320,7 +325,10 @@ class HTMLGenerator(OutputGenerator):
             for key, value in template_vars.items():
                 content = content.replace(f"{{{{{key}}}}}", value)
 
-            return f"<h2>Appendix</h2>{content}"
+            # Convert markdown to HTML
+            html_content = markdown.markdown(content)
+
+            return f"<h2>Appendix</h2>{html_content}"
         except Exception as e:
             logger.warning(f"Could not load appendix: {e}")
             return ""
