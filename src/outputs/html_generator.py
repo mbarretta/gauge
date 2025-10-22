@@ -404,6 +404,28 @@ class HTMLGenerator:
             </div>
         """
 
+    def _get_grade_badge_class(self, grade: str) -> str:
+        """Get CSS class for CHPS grade badge."""
+        grade_upper = grade.upper()
+        if grade_upper == 'A' or grade_upper == 'A+':
+            return "vuln-badge vuln-negligible"
+        elif grade_upper == 'B':
+            return "vuln-badge vuln-low"
+        elif grade_upper == 'C':
+            return "vuln-badge vuln-medium"
+        elif grade_upper == 'D':
+            return "vuln-badge vuln-high"
+        else:  # F or E
+            return "vuln-badge vuln-critical"
+
+    def _format_chps_score_display(self, chps_score) -> str:
+        """Format CHPS score for display with styled grade badge."""
+        if not chps_score:
+            return "N/A"
+
+        grade_class = self._get_grade_badge_class(chps_score.grade)
+        return f'{chps_score.score:.1f} <span class="{grade_class}">{chps_score.grade}</span>'
+
     def _generate_chps_section(self, results: list[ScanResult]) -> str:
         """Generate CHPS scoring section."""
         rows = []
@@ -413,11 +435,11 @@ class HTMLGenerator:
 
             # Alternative image row
             alt_score = alt.chps_score if alt and alt.chps_score else None
-            alt_display = f"{alt_score.score:.1f} ({alt_score.grade})" if alt_score else "N/A"
+            alt_display = self._format_chps_score_display(alt_score)
 
             # Chainguard image row
             cgr_score = cgr.chps_score if cgr and cgr.chps_score else None
-            cgr_display = f"{cgr_score.score:.1f} ({cgr_score.grade})" if cgr_score else "N/A"
+            cgr_display = self._format_chps_score_display(cgr_score)
 
             # Calculate improvement
             improvement = ""
