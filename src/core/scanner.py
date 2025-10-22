@@ -60,7 +60,7 @@ class VulnerabilityScanner:
         self.platform = platform
         self.check_fresh_images = check_fresh_images
         self.with_chps = with_chps
-        self.chps_scanner = CHPSScanner(docker_client.command) if with_chps else None
+        self.chps_scanner = CHPSScanner(docker_client.runtime) if with_chps else None
         self._verify_tools()
 
     def _verify_tools(self) -> None:
