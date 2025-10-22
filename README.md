@@ -125,6 +125,20 @@ gauge --output cost_analysis \
 
 This will create `cost-analysis.xlsx` with FIPS cost analysis included.
 
+### With CHPS Hardening & Provenance Scoring
+
+Include CHPS (Container Hardening and Provenance Scanner) scoring:
+
+```bash
+gauge --output both \
+      --output-file-name report \
+      --with-chps
+```
+
+This will include CHPS scores in both HTML and XLSX outputs. CHPS evaluates non-CVE security factors like provenance, SBOM quality, signing, and container hardening practices.
+
+**Note:** CHPS runs in a container automatically. The first time you use `--with-chps`, the tool will pull the `ghcr.io/chps-dev/chps-scorer:latest` image. No local installation required!
+
 ## Input Format
 
 Create a CSV file with image pairs (one per line):
@@ -172,6 +186,12 @@ Optional header row is automatically skipped.
 | `--hourly-rate` | 100.0 | Engineering hourly rate in USD |
 | `--fips-count` | - | Number of FIPS images for cost calculation |
 | `--auto-detect-fips` | - | Auto-detect FIPS images from names |
+
+### CHPS Integration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--with-chps` | - | Include CHPS (Container Hardening and Provenance Scanner) scoring |
 
 ### Cache Options
 

@@ -178,6 +178,13 @@ Examples:
         help="Skip checking for fresh images (faster but may use stale images)",
     )
 
+    # CHPS integration
+    parser.add_argument(
+        "--with-chps",
+        action="store_true",
+        help="Include CHPS (Container Hardening and Provenance Scanner) scoring",
+    )
+
     # Other options
     parser.add_argument(
         "-v",
@@ -285,6 +292,7 @@ def main():
         max_workers=args.max_workers,
         platform=args.platform,
         check_fresh_images=not args.no_fresh_check,
+        with_chps=args.with_chps,
     )
 
     # Load KEV catalog (optional, for enhanced reporting)

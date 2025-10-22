@@ -91,6 +91,22 @@ class VulnerabilityCount:
 
 
 @dataclass(frozen=True)
+class CHPSScore:
+    """
+    CHPS (Container Hardening and Provenance Scanner) scoring results.
+
+    Attributes:
+        score: Overall CHPS score (0-100)
+        grade: Letter grade (A+, A, B, C, D, F)
+        details: Detailed scoring breakdown from CHPS
+    """
+
+    score: float
+    grade: str
+    details: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class ImageAnalysis:
     """
     Complete analysis results for a single container image.
@@ -103,6 +119,7 @@ class ImageAnalysis:
         scan_timestamp: When the scan was performed
         digest: Image digest (sha256)
         cache_hit: Whether result came from cache
+        chps_score: CHPS scoring results (optional)
     """
 
     name: str
@@ -112,6 +129,7 @@ class ImageAnalysis:
     scan_timestamp: datetime = field(default_factory=datetime.now)
     digest: Optional[str] = None
     cache_hit: bool = False
+    chps_score: Optional[CHPSScore] = None
 
 
 @dataclass(frozen=True)

@@ -21,6 +21,7 @@ from core.models import (
     VulnerabilityCount,
 )
 from utils.docker_utils import DockerClient
+from utils.chps_utils import CHPSScanner
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class VulnerabilityScanner:
         max_workers: int = 4,
         platform: Optional[str] = None,
         check_fresh_images: bool = True,
+        with_chps: bool = False,
     ):
         """
         Initialize vulnerability scanner.
@@ -50,12 +52,15 @@ class VulnerabilityScanner:
             max_workers: Maximum parallel scanning threads
             platform: Platform specification for scans (e.g., "linux/amd64")
             check_fresh_images: Whether to ensure images are up-to-date
+            with_chps: Whether to include CHPS scoring
         """
         self.cache = cache
         self.docker = docker_client
         self.max_workers = max_workers
         self.platform = platform
         self.check_fresh_images = check_fresh_images
+        self.with_chps = with_chps
+        self.chps_scanner = CHPSScanner(docker_client.command) if with_chps else None
         self._verify_tools()
 
     def _verify_tools(self) -> None:
@@ -110,6 +115,11 @@ class VulnerabilityScanner:
             # Run Grype on SBOM to get vulnerabilities
             vulnerabilities = self._run_grype_on_sbom(sbom_json, image)
 
+            # Run CHPS scoring if requested
+            chps_score = None
+            if self.chps_scanner:
+                chps_score = self.chps_scanner.scan_image(image)
+
             # Create analysis result
             analysis = ImageAnalysis(
                 name=image,
@@ -119,6 +129,7 @@ class VulnerabilityScanner:
                 scan_timestamp=datetime.now(timezone.utc),
                 digest=digest,
                 cache_hit=False,
+                chps_score=chps_score,
             )
 
             # Cache the result

@@ -100,6 +100,10 @@ class XLSXGenerator(OutputGenerator):
         generator.write_rollup_section(len(alt_analyses))
         generator.write_roi_sections(alt_analyses)
 
+        # Add CHPS section if any images have CHPS scores
+        if any(a.chps_score for a in alt_analyses + cgr_analyses):
+            generator.write_chps_section(alt_analyses, cgr_analyses)
+
         if fips_count and fips_count > 0:
             generator.write_fips_sections(fips_count)
 
@@ -753,6 +757,87 @@ class _XLSXReportWriter:
 
         self.worksheet.write(
             self.row, self.col + 9, "Total (next year)", self.formats["body_green"]
+        )
+
+    def write_chps_section(
+        self, alt_analyses: list[ImageAnalysis], cgr_analyses: list[ImageAnalysis]
+    ):
+        """Write CHPS hardening and provenance scoring section."""
+        self.row += 2
+
+        # Section header
+        self.worksheet.write(
+            self.row,
+            self.col,
+            "CHPS Hardening & Provenance Scores",
+            self.formats["header_blue"],
+        )
+        self.row += 1
+
+        # Description
+        self.worksheet.write(
+            self.row,
+            self.col,
+            "CHPS (Container Hardening and Provenance Scanner) evaluates non-CVE security factors",
+            self.formats["body_white"],
+        )
+        self.row += 1
+
+        # Column headers
+        self.worksheet.write(self.row, self.col, "Image", self.formats["header_lightgrey"])
+        self.worksheet.write(
+            self.row, self.col + 1, "CHPS Score", self.formats["header_lightgrey"]
+        )
+        self.worksheet.write(
+            self.row, self.col + 2, "Grade", self.formats["header_lightgrey"]
+        )
+        self.worksheet.write(
+            self.row, self.col + 3, "Improvement", self.formats["header_lightgrey"]
+        )
+        self.row += 1
+
+        # Write image scores
+        for alt, cgr in zip(alt_analyses, cgr_analyses):
+            # Alternative image
+            alt_score = alt.chps_score.score if alt.chps_score else 0
+            alt_grade = alt.chps_score.grade if alt.chps_score else "N/A"
+
+            self.worksheet.write(self.row, self.col, alt.name, self.formats["body_white"])
+            self.worksheet.write(
+                self.row, self.col + 1, alt_score, self.formats["body_white"]
+            )
+            self.worksheet.write(
+                self.row, self.col + 2, alt_grade, self.formats["body_white"]
+            )
+            self.row += 1
+
+            # Chainguard image
+            cgr_score = cgr.chps_score.score if cgr.chps_score else 0
+            cgr_grade = cgr.chps_score.grade if cgr.chps_score else "N/A"
+            improvement = cgr_score - alt_score if alt.chps_score and cgr.chps_score else 0
+
+            self.worksheet.write(
+                self.row, self.col, f"{cgr.name} (Chainguard)", self.formats["body_green"]
+            )
+            self.worksheet.write(
+                self.row, self.col + 1, cgr_score, self.formats["body_green"]
+            )
+            self.worksheet.write(
+                self.row, self.col + 2, cgr_grade, self.formats["body_green"]
+            )
+            if improvement != 0:
+                self.worksheet.write(
+                    self.row, self.col + 3, improvement, self.formats["body_green"]
+                )
+            self.row += 1
+
+        # Summary note
+        self.row += 1
+        self.worksheet.write(
+            self.row,
+            self.col,
+            "Note: CHPS scores evaluate provenance, SBOM quality, signing, and hardening practices (not CVEs)",
+            self.formats["body_white"],
         )
 
     def write_fips_sections(self, fips_count: int):

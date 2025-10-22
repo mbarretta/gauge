@@ -135,6 +135,10 @@ class HTMLGenerator(OutputGenerator):
             self._html_comparison_table(results),
         ])
 
+        # Add CHPS section if any results have CHPS scores
+        if any(r.chainguard_analysis and r.chainguard_analysis.chps_score for r in results):
+            html_parts.append(self._html_chps_section(results))
+
         if appendix_path:
             html_parts.append(self._html_appendix(appendix_path, template_vars))
 
@@ -332,6 +336,64 @@ class HTMLGenerator(OutputGenerator):
         except Exception as e:
             logger.warning(f"Could not load appendix: {e}")
             return ""
+
+    def _html_chps_section(self, results: list[ScanResult]) -> str:
+        """Generate CHPS scoring section."""
+        rows = []
+        for result in results:
+            if not result.scan_successful:
+                continue
+
+            alt = result.alternative_analysis
+            cgr = result.chainguard_analysis
+
+            # Alternative image row
+            alt_score = alt.chps_score if alt and alt.chps_score else None
+            alt_display = f"{alt_score.score:.1f} ({alt_score.grade})" if alt_score else "N/A"
+
+            # Chainguard image row
+            cgr_score = cgr.chps_score if cgr and cgr.chps_score else None
+            cgr_display = f"{cgr_score.score:.1f} ({cgr_score.grade})" if cgr_score else "N/A"
+
+            # Calculate improvement
+            improvement = ""
+            if alt_score and cgr_score:
+                score_diff = cgr_score.score - alt_score.score
+                if score_diff > 0:
+                    improvement = f'<span style="color: #28a745;">+{score_diff:.1f}</span>'
+                elif score_diff < 0:
+                    improvement = f'<span style="color: #dc3545;">{score_diff:.1f}</span>'
+                else:
+                    improvement = "—"
+
+            rows.append(f"""
+<tr>
+    <td><strong>{alt.name if alt else 'N/A'}</strong></td>
+    <td>{alt_display}</td>
+    <td></td>
+</tr>
+<tr class="chainguard-row">
+    <td><strong>{cgr.name if cgr else 'N/A'}</strong> ✓</td>
+    <td>{cgr_display}</td>
+    <td>{improvement}</td>
+</tr>""")
+
+        return f"""
+<h2>CHPS Hardening & Provenance Scores</h2>
+<p>CHPS (Container Hardening and Provenance Scanner) evaluates container images for security hardening and provenance best practices. Scores range from 0-100, with higher scores indicating better security posture.</p>
+<table>
+    <thead>
+        <tr>
+            <th>Image</th>
+            <th>CHPS Score (Grade)</th>
+            <th>Improvement</th>
+        </tr>
+    </thead>
+    <tbody>
+        {"".join(rows)}
+    </tbody>
+</table>
+<p><em>Note: CHPS scoring evaluates non-CVE security factors including provenance, SBOM quality, signing, and container hardening practices.</em></p>"""
 
     def _html_methodology(self) -> str:
         """Generate methodology section."""
