@@ -4,7 +4,7 @@
 
 <table width="100%" border="0" cellpadding="0" cellspacing="0">
 <tr>
-<td width="50%" valign="top">
+<td width="40%" valign="top">
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@
 - [Support](#support)
 
 </td>
-<td width="50%" valign="middle" align="center">
+<td width="60%" valign="middle" align="center">
 
 <img src="resources/gauge-logo-white.png" width="400" alt="Gauge Logo">
 
