@@ -181,9 +181,10 @@ class VulnerabilityScanner:
         Returns:
             Tuple of (package_count, sbom_json_string)
         """
+        # Note: We don't pass --platform to Syft because we've already pulled
+        # the correct platform-specific image using ensure_fresh_image().
+        # Syft will scan whatever local image is available.
         cmd = ["syft", image, "-o", "json"]
-        if self.platform:
-            cmd.extend(["--platform", self.platform])
 
         result = subprocess.run(
             cmd,
