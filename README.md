@@ -2,9 +2,9 @@
 
 **Gauge your container security posture** - A unified tool for comprehensive container vulnerability assessments comparing the risks, the costs, and the "hardeness" (via [CHPs](https://github.com/chps-dev/chps)) of other container images as compared to [Chainguard Containers](https://www.chainguard.dev/containers).
 
-<table>
+<table style="width:100%">
 <tr>
-<td width="50%" valign="top">
+<td width="50%" valign="top" style="border: 0px">
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@
 - [Support](#support)
 
 </td>
-<td width="50%" valign="top" align="center">
+<td width="50%" valign="middle" align="center" style="border: 0px">
 
 <img src="resources/gauge-logo-white.png" width="400" alt="Gauge Logo">
 
