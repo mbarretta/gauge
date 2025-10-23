@@ -1,8 +1,37 @@
-<img src="resources/gauge-logo-white.png" width="400" alt="Gauge Logo">
-
 # Gauge
 
 **Gauge your container security posture** - A unified tool for comprehensive container vulnerability assessments comparing the risks, the costs, and the "hardeness" (via [CHPs](https://github.com/chps-dev/chps)) of other container images as compared to [Chainguard Containers](https://www.chainguard.dev/containers).
+
+<div style="display: flex; align-items: flex-start; gap: 20px;">
+<div style="flex: 1;">
+
+## Table of Contents
+
+- [Features](#features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Input Format](#input-format)
+- [Command-Line Options](#command-line-options)
+- [Architecture](#architecture)
+- [Caching System](#caching-system)
+- [Performance](#performance)
+- [Examples](#examples)
+- [Troubleshooting](#troubleshooting)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Migration from Legacy Tools](#migration-from-legacy-tools)
+- [Contributing](#contributing)
+- [License](#license)
+- [Support](#support)
+
+</div>
+<div style="flex: 0 0 400px;">
+
+<img src="resources/gauge-logo-white.png" width="400" alt="Gauge Logo">
+
+</div>
+</div>
 
 ## Features
 
@@ -142,6 +171,20 @@ This will include CHPS scores in both HTML and XLSX outputs. CHPS evaluates non-
 
 **Note:** CHPS runs in a container automatically. The first time you use `--with-chps`, the tool will pull the `ghcr.io/chps-dev/chps-scorer:latest` image. No local installation required!
 
+### Custom Platform Specification
+
+Override the default platform for specialized environments:
+
+```bash
+gauge --platform linux/arm64 \
+      --output-file-name arm64-report
+```
+
+**Default behavior**: Gauge uses `linux/amd64` by default to ensure consistent results across all environments (including Apple Silicon Macs). This ensures that:
+- Vulnerability scans are reproducible
+- CHPS scores match direct CHPS execution
+- Reports display the same platform across all scans
+
 ## Input Format
 
 Create a CSV file with image pairs (one per line):
@@ -171,7 +214,7 @@ Optional header row is automatically skipped.
 |--------|---------|-------------|
 | `-c, --customer` | "Customer" | Customer name for report branding |
 | `--max-workers` | 4 | Number of parallel scanning threads |
-| `--platform` | - | Platform for scans (e.g., linux/amd64) |
+| `--platform` | `linux/amd64` | Platform for image pulls and scans (ensures consistency across all environments including ARM64 Macs) |
 | `-v, --verbose` | - | Enable verbose logging |
 
 ### Assessment Summary Options (HTML)
@@ -382,6 +425,63 @@ This creates `fleet-assessment.html`.
 - Clear cache with `--clear-cache`
 - Disable caching with `--no-cache`
 - Check cache directory permissions
+
+## Project Structure
+
+```
+gauge/
+├── src/                          # Source code
+│   ├── core/                     # Core functionality
+│   │   ├── cache.py             # Digest-based scan caching
+│   │   ├── models.py            # Data models (ImageAnalysis, ScanResult, CHPSScore)
+│   │   └── scanner.py           # Vulnerability scanner orchestration
+│   ├── integrations/            # External tool integrations
+│   │   ├── chainguard_api.py   # Chainguard API client (future)
+│   │   └── kev_catalog.py      # CISA KEV catalog integration
+│   ├── outputs/                 # Report generators
+│   │   ├── base.py             # Base generator interface
+│   │   ├── html_generator.py  # HTML assessment summary generator
+│   │   └── xlsx_generator.py  # XLSX cost analysis generator
+│   ├── utils/                   # Utility modules
+│   │   ├── chps_utils.py       # CHPS (Container Hardening) integration
+│   │   ├── docker_utils.py     # Docker/Podman operations
+│   │   ├── fips_calculator.py  # FIPS implementation cost calculations
+│   │   └── roi_calculator.py   # ROI and CVE cost projections
+│   └── cli.py                   # Command-line interface
+├── resources/                    # Static resources
+│   ├── gauge-logo-black.png    # Gauge logo (dark backgrounds)
+│   ├── gauge-logo-white.png    # Gauge logo (light backgrounds)
+│   └── linky-white.png         # Chainguard logo for HTML reports
+├── tests/                        # Unit tests
+├── example-images.csv           # Sample image pairs for testing
+├── sample-exec-summary.md       # Example executive summary template
+├── sample-appendix.md           # Example appendix template
+├── requirements.txt             # Python dependencies
+├── setup.py                     # Package installation config
+├── MIGRATION.md                 # Migration guide from legacy tools
+└── README.md                    # This file
+```
+
+### Key Components
+
+**Core Modules:**
+- `scanner.py`: Orchestrates Syft (SBOM) → Grype (CVE scanning) → CHPS (hardening) pipeline
+- `cache.py`: Digest-based caching for performance optimization
+- `models.py`: Immutable data structures for type safety
+
+**Report Generators:**
+- `html_generator.py`: Professional assessment summaries with Chainguard branding
+- `xlsx_generator.py`: Interactive cost analysis with ROI calculations and formulas
+
+**Integrations:**
+- `chps_utils.py`: Containerized CHPS execution with score recalculation for skipped CVE checks
+- `docker_utils.py`: Unified Docker/Podman interface with platform awareness
+- `kev_catalog.py`: CISA Known Exploited Vulnerabilities catalog integration
+
+**Resources:**
+- Logos and branding assets used in HTML reports
+- `linky-white.png`: Chainguard logo embedded in HTML header
+- `gauge-logo-*.png`: Gauge branding for documentation
 
 ## Development
 

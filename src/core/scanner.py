@@ -102,7 +102,7 @@ class VulnerabilityScanner:
         """
         # Check if we should update the image first
         if self.check_fresh_images:
-            self.docker.ensure_fresh_image(image)
+            self.docker.ensure_fresh_image(image, self.platform)
 
         # Get image digest for caching
         digest = self.docker.get_image_digest(image)

@@ -106,7 +106,8 @@ Examples:
     )
     common.add_argument(
         "--platform",
-        help="Platform for scans (e.g., linux/amd64)",
+        default="linux/amd64",
+        help="Platform for image pulls and scans (default: linux/amd64)",
     )
 
     # HTML-specific options (assessment summary)
@@ -317,6 +318,7 @@ def main():
             customer_name=args.customer_name,
             exec_summary_path=exec_summary,
             appendix_path=appendix,
+            platform=args.platform,
         )
 
         # Generate XLSX cost analysis
@@ -328,6 +330,7 @@ def main():
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             auto_detect_fips=args.auto_detect_fips,
+            platform=args.platform,
         )
 
         output_files = [html_path, xlsx_path]
@@ -343,6 +346,7 @@ def main():
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             auto_detect_fips=args.auto_detect_fips,
+            platform=args.platform,
         )
         output_files = [xlsx_path]
 
@@ -359,6 +363,7 @@ def main():
             customer_name=args.customer_name,
             exec_summary_path=exec_summary,
             appendix_path=appendix,
+            platform=args.platform,
         )
         output_files = [html_path]
 

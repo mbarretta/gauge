@@ -68,6 +68,9 @@ class XLSXGenerator(OutputGenerator):
         """
         logger.info(f"Generating vulnerability cost analysis: {output_path}")
 
+        # Extract platform from kwargs (default to linux/amd64)
+        platform = kwargs.get('platform', 'linux/amd64')
+
         # Filter successful scans
         successful = [r for r in results if r.scan_successful]
         if not successful:
@@ -97,7 +100,7 @@ class XLSXGenerator(OutputGenerator):
             workbook, worksheet, hours_per_vuln, hourly_rate
         )
 
-        generator.write_image_comparison(alt_analyses, cgr_analyses)
+        generator.write_image_comparison(alt_analyses, cgr_analyses, platform)
         generator.write_rollup_section(len(alt_analyses))
         generator.write_roi_sections(alt_analyses)
 
@@ -353,8 +356,15 @@ class _XLSXReportWriter:
         self,
         alt_analyses: list[ImageAnalysis],
         cgr_analyses: list[ImageAnalysis],
+        platform: str = "linux/amd64",
     ) -> tuple[dict, dict]:
         """Write image comparison section."""
+        # Platform info row
+        self.worksheet.write(
+            self.row, self.col, f"Platform: {platform}", self.formats["body_lightgrey"]
+        )
+        self.row += 2  # Skip a row for spacing
+
         # Header
         header = [
             "Image",

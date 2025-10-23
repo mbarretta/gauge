@@ -65,6 +65,9 @@ class HTMLGenerator:
         """
         logger.info(f"Generating vulnerability assessment summary: {output_path}")
 
+        # Extract platform from kwargs (default to linux/amd64)
+        platform = kwargs.get('platform', 'linux/amd64')
+
         # Filter successful scans
         successful = [r for r in results if r.scan_successful]
         if not successful:
@@ -97,6 +100,7 @@ class HTMLGenerator:
             image_pairs=image_pairs,
             appendix_content=appendix_content,
             results=successful,
+            platform=platform,
         )
 
         # Clean up chainguard image references
@@ -167,6 +171,7 @@ class HTMLGenerator:
         image_pairs: list,
         appendix_content: Optional[str],
         results: list[ScanResult],
+        platform: str = "linux/amd64",
     ) -> str:
         """Build complete HTML document."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -229,7 +234,7 @@ class HTMLGenerator:
         <div class="header-section">
             <img class="header-logo" src="{CHAINGUARD_LOGO_URL}" alt="Chainguard Logo">
             <h1>Vulnerability Comparison Report</h1>
-            <p>A comprehensive analysis comparing vulnerabilities in your container images versus Chainguard's hardened alternatives.</p>
+            <p>A comprehensive analysis comparing vulnerabilities in your container images versus Chainguard's hardened alternatives. <em>(Platform: {platform})</em></p>
         </div>
 {exec_summary_section}
 
@@ -419,17 +424,48 @@ class HTMLGenerator:
             return "vuln-badge vuln-critical"
 
     def _format_chps_score_display(self, chps_score) -> str:
-        """Format CHPS score for display with styled grade badge."""
+        """Format CHPS score for display with styled grade badge and component breakdown."""
         if not chps_score:
             return "N/A"
 
-        # Fix grade mapping - convert E to F (for cached results that still have E)
-        grade = chps_score.grade
-        if grade == "E" or chps_score.score == 0:
-            grade = "F"
+        # Get all score components from details
+        scores = chps_score.details.get("scores", {})
 
-        grade_class = self._get_grade_badge_class(grade)
-        return f'<span class="{grade_class}">{grade}</span>'
+        # Build component lines
+        components = []
+        component_order = ["minimalism", "provenance", "configuration"]
+        component_labels = {
+            "minimalism": "Minimalism",
+            "provenance": "Provenance",
+            "configuration": "Configuration"
+        }
+
+        for component in component_order:
+            if component in scores:
+                comp_data = scores[component]
+                comp_grade = comp_data.get("grade", "F")
+                # Fix E→F for components too
+                if comp_grade == "E":
+                    comp_grade = "F"
+                grade_class = self._get_grade_badge_class(comp_grade)
+                components.append(
+                    f'<div style="width: 250px; display: flex; justify-content: space-between; align-items: center;">'
+                    f'<span>{component_labels[component]}:</span>'
+                    f'<span class="{grade_class}">{comp_grade}</span>'
+                    f'</div>'
+                )
+
+        # Build the overall grade (larger)
+        overall_grade_class = self._get_grade_badge_class(chps_score.grade)
+        overall = (
+            f'<div style="width: 250px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">'
+            f'<strong>Overall:</strong>'
+            f'<span class="{overall_grade_class}" style="font-size: 1.2em; padding: 4px 6px;">{chps_score.grade}</span>'
+            f'</div>'
+        )
+
+        # Combine all components
+        return "".join(components) + overall
 
     def _generate_chps_section(self, results: list[ScanResult]) -> str:
         """Generate CHPS scoring section."""
@@ -438,36 +474,26 @@ class HTMLGenerator:
             alt = result.alternative_analysis
             cgr = result.chainguard_analysis
 
-            # Alternative image row
+            # Format CHPS displays for both images
             alt_score = alt.chps_score if alt and alt.chps_score else None
             alt_display = self._format_chps_score_display(alt_score)
 
-            # Chainguard image row
             cgr_score = cgr.chps_score if cgr and cgr.chps_score else None
             cgr_display = self._format_chps_score_display(cgr_score)
 
-            # Calculate improvement
-            improvement = ""
-            if alt_score and cgr_score:
-                score_diff = cgr_score.score - alt_score.score
-                if score_diff > 0:
-                    improvement = f'<span style="color: #28a745;">+{score_diff:.1f}</span>'
-                elif score_diff < 0:
-                    improvement = f'<span style="color: #dc3545;">{score_diff:.1f}</span>'
-                else:
-                    improvement = "—"
-
+            # Build single row with image pair
             rows.append(f"""
-<tr>
-    <td class="image-name-cell"><code class="image-name">{alt.name if alt else 'N/A'}</code></td>
-    <td>{alt_display}</td>
-    <td></td>
-</tr>
-<tr style="background-color: #e8f5e9;">
-    <td class="image-name-cell"><code class="image-name">{cgr.name if cgr else 'N/A'}</code> ✓</td>
-    <td>{cgr_display}</td>
-    <td>{improvement}</td>
-</tr>""")
+                <tr class="image-comparison-row">
+                    <td class="image-name-cell">
+                        <code class="image-name">{alt.name if alt else 'N/A'}</code>
+                    </td>
+                    <td class="vulnerability-count">{alt_display}</td>
+                    <td class="image-name-cell">
+                        <code class="image-name">{cgr.name if cgr else 'N/A'}</code>
+                    </td>
+                    <td class="vulnerability-count">{cgr_display}</td>
+                </tr>
+            """)
 
         return f"""
         <!-- CHPS Scoring Section -->
@@ -478,9 +504,10 @@ class HTMLGenerator:
                 <table>
                     <thead>
                         <tr>
-                            <th>Image</th>
+                            <th>Your Image</th>
                             <th>CHPS Grade</th>
-                            <th>Improvement</th>
+                            <th>Chainguard Image <span style="font-size: 0.8em; font-weight: normal;">(cgr.dev)</span></th>
+                            <th>CHPS Grade</th>
                         </tr>
                     </thead>
                     <tbody>

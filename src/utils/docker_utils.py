@@ -75,13 +75,13 @@ class DockerClient:
 
     def get_remote_digest(self, image: str) -> Optional[str]:
         """
-        Get the digest of an image from the remote registry.
+        Get the digest of an image from the remote registry (linux/amd64 platform).
 
         Args:
             image: Image reference (registry/repo:tag)
 
         Returns:
-            Remote image digest or None if unavailable
+            Remote image digest for linux/amd64 or None if unavailable
         """
         try:
             result = subprocess.run(
@@ -98,8 +98,15 @@ class DockerClient:
 
             # Handle multi-arch manifests
             if "manifests" in manifest and isinstance(manifest["manifests"], list):
-                # Use first manifest for simplicity
+                # Find linux/amd64 platform
+                for m in manifest["manifests"]:
+                    platform = m.get("platform", {})
+                    if platform.get("os") == "linux" and platform.get("architecture") == "amd64":
+                        return m.get("digest")
+
+                # Fallback to first manifest if amd64 not found
                 if manifest["manifests"]:
+                    logger.debug(f"Could not find linux/amd64 manifest for {image}, using first available")
                     return manifest["manifests"][0].get("digest")
 
             # Single-arch manifest
@@ -112,17 +119,21 @@ class DockerClient:
             logger.debug(f"Failed to get remote digest for {image}: {e}")
             return None
 
-    def ensure_fresh_image(self, image: str) -> bool:
+    def ensure_fresh_image(self, image: str, platform: Optional[str] = None) -> bool:
         """
         Ensure local image is up-to-date with remote.
 
         Args:
             image: Image reference to check/pull
+            platform: Platform specification (default: "linux/amd64")
 
         Returns:
             True if image was updated, False otherwise
         """
         try:
+            # Default to linux/amd64 for consistency across environments
+            platform = platform or "linux/amd64"
+
             remote_digest = self.get_remote_digest(image)
             if not remote_digest:
                 logger.debug(f"Could not get remote digest for {image}")
@@ -131,9 +142,9 @@ class DockerClient:
             local_digest = self.get_image_digest(image)
 
             if not local_digest or local_digest != remote_digest:
-                logger.info(f"Pulling fresh copy of {image}")
+                logger.info(f"Pulling fresh copy of {image} ({platform})")
                 result = subprocess.run(
-                    [self.runtime, "pull", image],
+                    [self.runtime, "pull", "--platform", platform, image],
                     capture_output=True,
                     timeout=300
                 )
@@ -180,16 +191,16 @@ class DockerClient:
 
         Args:
             image: Image reference to pull
-            platform: Optional platform specification (e.g., "linux/amd64")
+            platform: Platform specification (default: "linux/amd64")
 
         Returns:
             True if pull succeeded, False otherwise
         """
         try:
-            cmd = [self.runtime, "pull"]
-            if platform:
-                cmd.extend(["--platform", platform])
-            cmd.append(image)
+            # Default to linux/amd64 for consistency across environments
+            platform = platform or "linux/amd64"
+
+            cmd = [self.runtime, "pull", "--platform", platform, image]
 
             result = subprocess.run(
                 cmd,

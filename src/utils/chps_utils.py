@@ -136,29 +136,59 @@ class CHPSScanner:
             output_data = json.loads(json_text)
 
             # Extract score and grade from the JSON structure
-            # CHPS returns: {"scores": {"minimalism": {"score": X, "grade": "A"}}}
+            # CHPS returns: {"overall": {"score": X, "max": Y, "grade": "A"}, "scores": {...}}
+            overall = output_data.get("overall", {})
             scores = output_data.get("scores", {})
-            minimalism = scores.get("minimalism", {})
 
-            score = minimalism.get("score", 0.0)
-            grade = minimalism.get("grade", "F")
+            # When running with --skip-cves, we need to recalculate scores
+            # Original max: 20 points (4 minimalism + 8 provenance + 4 configuration + 4 cves)
+            # With --skip-cves: 16 points (4 minimalism + 8 provenance + 4 configuration)
+            original_score = overall.get("score", 0)
+            original_max = overall.get("max", 20)
 
-            # Fix grade mapping - CHPS returns "E" for 0, but spec says it should be "F"
+            # Calculate actual score from components (excluding CVEs)
+            minimalism_score = scores.get("minimalism", {}).get("score", 0)
+            provenance_score = scores.get("provenance", {}).get("score", 0)
+            configuration_score = scores.get("configuration", {}).get("score", 0)
+
+            # Recalculated score (out of 16)
+            adjusted_score = minimalism_score + provenance_score + configuration_score
+            adjusted_max = 16  # 4 + 8 + 4
+            adjusted_percentage = (adjusted_score / adjusted_max * 100) if adjusted_max > 0 else 0
+
+            # Recalculate grade based on adjusted percentage
             # Spec: 100=A+, 75-99=A, 50-74=B, 40-49=C, 1-39=D, 0=F
-            if grade == "E" or score == 0:
+            if adjusted_percentage == 100:
+                grade = "A+"
+            elif adjusted_percentage >= 75:
+                grade = "A"
+            elif adjusted_percentage >= 50:
+                grade = "B"
+            elif adjusted_percentage >= 40:
+                grade = "C"
+            elif adjusted_percentage >= 1:
+                grade = "D"
+            else:
                 grade = "F"
 
-            # Store detailed breakdown
+            # Store detailed breakdown with adjusted values
             details = {
-                "scores": scores,  # Include all scores
+                "scores": scores,  # Include all component scores
                 "image": output_data.get("image", ""),
                 "digest": output_data.get("digest", ""),
+                "original_score": original_score,
+                "original_max": original_max,
+                "adjusted_max": adjusted_max,
+                "adjusted_percentage": adjusted_percentage,
             }
 
-            logger.info(f"CHPS scan complete for {image_name}: Score={score}, Grade={grade}")
+            logger.info(
+                f"CHPS scan complete for {image_name}: "
+                f"Score={adjusted_score}/{adjusted_max} ({adjusted_percentage:.0f}%), Grade={grade}"
+            )
 
             return CHPSScore(
-                score=score,
+                score=adjusted_score,
                 grade=grade,
                 details=details,
             )
