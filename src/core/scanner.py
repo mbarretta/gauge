@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Optional
 
+from constants import DEFAULT_MAX_WORKERS, DEFAULT_PLATFORM
 from core.cache import ScanCache
 from core.models import (
     ImageAnalysis,
@@ -38,8 +39,8 @@ class VulnerabilityScanner:
         self,
         cache: ScanCache,
         docker_client: DockerClient,
-        max_workers: int = 4,
-        platform: Optional[str] = None,
+        max_workers: int = DEFAULT_MAX_WORKERS,
+        platform: Optional[str] = DEFAULT_PLATFORM,
         check_fresh_images: bool = True,
         with_chps: bool = False,
     ):
@@ -262,13 +263,13 @@ class VulnerabilityScanner:
         logger.info(f"Scanning pair: {pair}")
 
         try:
-            alt_analysis = self.scan_image(pair.alternative_image)
-            cgr_analysis = self.scan_image(pair.chainguard_image)
+            alternative_analysis = self.scan_image(pair.alternative_image)
+            chainguard_analysis = self.scan_image(pair.chainguard_image)
 
             return ScanResult(
                 pair=pair,
-                alternative_analysis=alt_analysis,
-                chainguard_analysis=cgr_analysis,
+                alternative_analysis=alternative_analysis,
+                chainguard_analysis=chainguard_analysis,
                 scan_successful=True,
             )
 

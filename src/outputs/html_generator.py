@@ -14,12 +14,40 @@ from typing import Optional
 
 import markdown
 
+from constants import CHAINGUARD_LOGO_PATH, DEFAULT_PLATFORM, GRADE_TO_CSS_CLASS
 from core.models import ScanResult, ImageAnalysis
 
 logger = logging.getLogger(__name__)
 
-# Chainguard logo URL
-CHAINGUARD_LOGO_URL = "resources/linky-white.png"
+
+def _apply_template_variables(content: str, metrics: dict, customer_name: str) -> str:
+    """
+    Apply template variable substitution to content.
+
+    Replaces {{variable_name}} placeholders with actual values.
+
+    Args:
+        content: Content string with template variables
+        metrics: Dictionary containing metric values
+        customer_name: Customer name for substitution
+
+    Returns:
+        Content with variables replaced
+    """
+    template_vars = {
+        "customer_name": customer_name,
+        "images_scanned": str(metrics['images_scanned']),
+        "total_customer_vulns": str(metrics['total_customer_vulns']),
+        "total_chainguard_vulns": str(metrics['total_chainguard_vulns']),
+        "reduction_percentage": f"{metrics['reduction_percentage']:.1f}%",
+        "total_reduction": str(metrics['total_reduction']),
+    }
+
+    for key, value in template_vars.items():
+        content = content.replace(f"{{{{{key}}}}}", value)
+
+    return content
+
 
 class HTMLGenerator:
     """
@@ -47,10 +75,7 @@ class HTMLGenerator:
         self,
         results: list[ScanResult],
         output_path: Path,
-        customer_name: str = "Customer",
-        exec_summary_path: Optional[Path] = None,
-        appendix_path: Optional[Path] = None,
-        **kwargs,
+        config: "HTMLGeneratorConfig",
     ) -> None:
         """
         Generate vulnerability assessment summary report (HTML).
@@ -58,27 +83,41 @@ class HTMLGenerator:
         Args:
             results: Scan results for image pairs
             output_path: Output file path
-            customer_name: Customer name for branding
-            exec_summary_path: Path to markdown executive summary
-            appendix_path: Path to custom appendix markdown
-            **kwargs: Additional options
+            config: HTML generator configuration
         """
-        logger.info(f"Generating vulnerability assessment summary: {output_path}")
+        from core.exceptions import OutputException
+        from outputs.config import HTMLGeneratorConfig
 
-        # Extract platform from kwargs (default to linux/amd64)
-        platform = kwargs.get('platform', 'linux/amd64')
+        # Validate config
+        if not isinstance(config, HTMLGeneratorConfig):
+            raise OutputException(
+                "html",
+                f"Expected HTMLGeneratorConfig, got {type(config).__name__}"
+            )
+
+        config.validate()
+
+        logger.info(f"Generating vulnerability assessment summary: {output_path}")
 
         # Filter successful scans
         successful = [r for r in results if r.scan_successful]
         if not successful:
-            raise ValueError("No successful scan results to report")
+            raise OutputException("html", "No successful scan results to report")
 
         # Calculate metrics
         metrics = self._calculate_metrics(successful)
 
         # Load executive summary and appendix
-        exec_summary = self._load_exec_summary(exec_summary_path, metrics, customer_name)
-        appendix_content = self._load_appendix(appendix_path, metrics, customer_name)
+        exec_summary = self._load_exec_summary(
+            config.exec_summary_path,
+            metrics,
+            config.customer_name
+        )
+        appendix_content = self._load_appendix(
+            config.appendix_path,
+            metrics,
+            config.customer_name
+        )
 
         # Build image pairs for table
         image_pairs = []
@@ -93,14 +132,14 @@ class HTMLGenerator:
 
         # Build HTML
         html_content = self._build_html_template(
-            customer_name=customer_name,
+            customer_name=config.customer_name,
             css_content=css_content,
             exec_summary=exec_summary,
             metrics=metrics,
             image_pairs=image_pairs,
             appendix_content=appendix_content,
             results=successful,
-            platform=platform,
+            platform=config.platform,
         )
 
         # Clean up chainguard image references
@@ -129,24 +168,24 @@ class HTMLGenerator:
             reduction_percentage = (total_reduction / total_customer_vulns) * 100
 
         # Per-severity summary
-        customer_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
-        cgr_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
+        alternative_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
+        chainguard_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
 
         for result in results:
-            alt = result.alternative_analysis
-            cgr = result.chainguard_analysis
+            alternative = result.alternative_analysis
+            chainguard = result.chainguard_analysis
 
-            customer_summary["Critical"] += alt.vulnerabilities.critical
-            customer_summary["High"] += alt.vulnerabilities.high
-            customer_summary["Medium"] += alt.vulnerabilities.medium
-            customer_summary["Low"] += alt.vulnerabilities.low
-            customer_summary["Negligible"] += alt.vulnerabilities.negligible
+            alternative_summary["Critical"] += alternative.vulnerabilities.critical
+            alternative_summary["High"] += alternative.vulnerabilities.high
+            alternative_summary["Medium"] += alternative.vulnerabilities.medium
+            alternative_summary["Low"] += alternative.vulnerabilities.low
+            alternative_summary["Negligible"] += alternative.vulnerabilities.negligible
 
-            cgr_summary["Critical"] += cgr.vulnerabilities.critical
-            cgr_summary["High"] += cgr.vulnerabilities.high
-            cgr_summary["Medium"] += cgr.vulnerabilities.medium
-            cgr_summary["Low"] += cgr.vulnerabilities.low
-            cgr_summary["Negligible"] += cgr.vulnerabilities.negligible
+            chainguard_summary["Critical"] += chainguard.vulnerabilities.critical
+            chainguard_summary["High"] += chainguard.vulnerabilities.high
+            chainguard_summary["Medium"] += chainguard.vulnerabilities.medium
+            chainguard_summary["Low"] += chainguard.vulnerabilities.low
+            chainguard_summary["Negligible"] += chainguard.vulnerabilities.negligible
 
         return {
             'total_customer_vulns': total_customer_vulns,
@@ -154,8 +193,8 @@ class HTMLGenerator:
             'total_reduction': total_reduction,
             'reduction_percentage': round(reduction_percentage, 2),
             'images_scanned': len(results),
-            'customer_summary': customer_summary,
-            'cgr_summary': cgr_summary,
+            'alternative_summary': alternative_summary,
+            'chainguard_summary': chainguard_summary,
         }
 
     def _format_number(self, num: int) -> str:
@@ -176,49 +215,13 @@ class HTMLGenerator:
         """Build complete HTML document."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        # Check if we have CHPS scores
-        has_chps = any(
-            (r.chainguard_analysis and r.chainguard_analysis.chps_score) or
-            (r.alternative_analysis and r.alternative_analysis.chps_score)
-            for r in results
-        )
-
-        chps_section = ""
-        if has_chps:
-            logger.info("CHPS scores detected, adding CHPS section to HTML report")
-            chps_section = self._generate_chps_section(results)
-
-        # Build executive summary section if provided
-        exec_summary_section = ""
-        if exec_summary:
-            exec_summary_section = f"""
-        <!-- Executive Summary -->
-        <div class="image-comparison-section no-break">
-            <h2>Executive Summary</h2>
-            {exec_summary}
-        </div>"""
-
-        # Build appendix section if provided
-        appendix_section = ""
-        if appendix_content:
-            appendix_section = f"""
-        <!-- Appendix Section -->
-        <div class="appendix-content">
-            <h2>Appendix</h2>
-            {appendix_content}
-
-            <!-- Footer integrated within appendix container -->
-            <div class="footer">
-                <p>This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}</p>
-            </div>
-        </div>"""
-        else:
-            # If no appendix, add footer outside appendix container
-            appendix_section = f"""
-        <!-- Footer -->
-        <div class="footer">
-            <p>This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}</p>
-        </div>"""
+        # Build document sections
+        header_section = self._build_header_section(platform)
+        exec_summary_section = self._build_exec_summary_section(exec_summary)
+        cve_reduction_section = self._build_cve_reduction_section(metrics)
+        images_scanned_section = self._build_images_scanned_section(image_pairs)
+        chps_section = self._build_chps_section_if_needed(results)
+        footer_section = self._build_footer_section(customer_name, timestamp, appendix_content)
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -231,13 +234,39 @@ class HTMLGenerator:
 </head>
 <body>
     <div class="container">
-        <div class="header-section">
-            <img class="header-logo" src="{CHAINGUARD_LOGO_URL}" alt="Chainguard Logo">
+{header_section}
+{exec_summary_section}
+{cve_reduction_section}
+{images_scanned_section}
+{chps_section}
+{footer_section}
+    </div>
+</body>
+</html>"""
+
+    def _build_header_section(self, platform: str) -> str:
+        """Build the header section of the HTML document."""
+        return f"""        <div class="header-section">
+            <img class="header-logo" src="{CHAINGUARD_LOGO_PATH}" alt="Chainguard Logo">
             <h1>Vulnerability Comparison Report</h1>
             <p>A comprehensive analysis comparing vulnerabilities in your container images versus Chainguard's hardened alternatives. <em>(Platform: {platform})</em></p>
-        </div>
-{exec_summary_section}
+        </div>"""
 
+    def _build_exec_summary_section(self, exec_summary: Optional[str]) -> str:
+        """Build the executive summary section if content is provided."""
+        if not exec_summary:
+            return ""
+
+        return f"""
+        <!-- Executive Summary -->
+        <div class="image-comparison-section no-break">
+            <h2>Executive Summary</h2>
+            {exec_summary}
+        </div>"""
+
+    def _build_cve_reduction_section(self, metrics: dict) -> str:
+        """Build the CVE reduction analysis section."""
+        return f"""
         <!-- CVE Reduction Metrics -->
         <div class="image-comparison-section no-break cve-reduction-section">
             <h2>CVE Reduction Analysis</h2>
@@ -259,7 +288,7 @@ class HTMLGenerator:
                             {self._format_number(metrics['total_customer_vulns'])}
                             <span>Total Vulnerabilities</span>
                         </div>
-                        {self._generate_severity_table(metrics['customer_summary'])}
+                        {self._generate_severity_table(metrics['alternative_summary'])}
                     </div>
                 </div>
 
@@ -271,12 +300,15 @@ class HTMLGenerator:
                             {self._format_number(metrics['total_chainguard_vulns'])}
                             <span>Total Vulnerabilities</span>
                         </div>
-                        {self._generate_severity_table(metrics['cgr_summary'])}
+                        {self._generate_severity_table(metrics['chainguard_summary'])}
                     </div>
                 </div>
             </div>
-        </div>
+        </div>"""
 
+    def _build_images_scanned_section(self, image_pairs: list) -> str:
+        """Build the images scanned comparison table section."""
+        return f"""
         <!-- Image Comparison Table -->
         <div class="images-scanned-section">
             <h2>Images Scanned</h2>
@@ -296,13 +328,44 @@ class HTMLGenerator:
                     </tbody>
                 </table>
             </div>
-        </div>
+        </div>"""
 
-        {chps_section}
-{appendix_section}
-    </div>
-</body>
-</html>"""
+    def _build_chps_section_if_needed(self, results: list[ScanResult]) -> str:
+        """Build CHPS section if any results have CHPS scores."""
+        has_chps = any(
+            (r.chainguard_analysis and r.chainguard_analysis.chps_score) or
+            (r.alternative_analysis and r.alternative_analysis.chps_score)
+            for r in results
+        )
+
+        if has_chps:
+            logger.info("CHPS scores detected, adding CHPS section to HTML report")
+            return self._generate_chps_section(results)
+
+        return ""
+
+    def _build_footer_section(self, customer_name: str, timestamp: str, appendix_content: Optional[str]) -> str:
+        """Build the footer section, optionally with appendix."""
+        footer_text = f"This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}"
+
+        if appendix_content:
+            return f"""
+        <!-- Appendix Section -->
+        <div class="appendix-content">
+            <h2>Appendix</h2>
+            {appendix_content}
+
+            <!-- Footer integrated within appendix container -->
+            <div class="footer">
+                <p>{footer_text}</p>
+            </div>
+        </div>"""
+        else:
+            return f"""
+        <!-- Footer -->
+        <div class="footer">
+            <p>{footer_text}</p>
+        </div>"""
 
     def _generate_severity_table(self, summary: dict) -> str:
         """Generate HTML for severity summary table."""
@@ -412,16 +475,7 @@ class HTMLGenerator:
     def _get_grade_badge_class(self, grade: str) -> str:
         """Get CSS class for CHPS grade badge."""
         grade_upper = grade.upper()
-        if grade_upper == 'A' or grade_upper == 'A+':
-            return "vuln-badge vuln-negligible"
-        elif grade_upper == 'B':
-            return "vuln-badge vuln-low"
-        elif grade_upper == 'C':
-            return "vuln-badge vuln-medium"
-        elif grade_upper == 'D':
-            return "vuln-badge vuln-high"
-        else:  # F or E
-            return "vuln-badge vuln-critical"
+        return GRADE_TO_CSS_CLASS.get(grade_upper, "vuln-badge vuln-critical")
 
     def _format_chps_score_display(self, chps_score) -> str:
         """Format CHPS score for display with styled grade badge and component breakdown."""
@@ -471,27 +525,27 @@ class HTMLGenerator:
         """Generate CHPS scoring section."""
         rows = []
         for result in results:
-            alt = result.alternative_analysis
-            cgr = result.chainguard_analysis
+            alternative = result.alternative_analysis
+            chainguard = result.chainguard_analysis
 
             # Format CHPS displays for both images
-            alt_score = alt.chps_score if alt and alt.chps_score else None
-            alt_display = self._format_chps_score_display(alt_score)
+            alternative_score = alternative.chps_score if alternative and alternative.chps_score else None
+            alternative_display = self._format_chps_score_display(alternative_score)
 
-            cgr_score = cgr.chps_score if cgr and cgr.chps_score else None
-            cgr_display = self._format_chps_score_display(cgr_score)
+            chainguard_score = chainguard.chps_score if chainguard and chainguard.chps_score else None
+            chainguard_display = self._format_chps_score_display(chainguard_score)
 
             # Build single row with image pair
             rows.append(f"""
                 <tr class="image-comparison-row">
                     <td class="image-name-cell">
-                        <code class="image-name">{alt.name if alt else 'N/A'}</code>
+                        <code class="image-name">{alternative.name if alternative else 'N/A'}</code>
                     </td>
-                    <td class="vulnerability-count">{alt_display}</td>
+                    <td class="vulnerability-count">{alternative_display}</td>
                     <td class="image-name-cell">
-                        <code class="image-name">{cgr.name if cgr else 'N/A'}</code>
+                        <code class="image-name">{chainguard.name if chainguard else 'N/A'}</code>
                     </td>
-                    <td class="vulnerability-count">{cgr_display}</td>
+                    <td class="vulnerability-count">{chainguard_display}</td>
                 </tr>
             """)
 
@@ -528,18 +582,8 @@ class HTMLGenerator:
             with open(path, "r") as f:
                 content = f.read()
 
-            # Replace template variables
-            template_vars = {
-                "customer_name": customer_name,
-                "images_scanned": str(metrics['images_scanned']),
-                "total_customer_vulns": str(metrics['total_customer_vulns']),
-                "total_chainguard_vulns": str(metrics['total_chainguard_vulns']),
-                "reduction_percentage": f"{metrics['reduction_percentage']:.1f}%",
-                "total_reduction": str(metrics['total_reduction']),
-            }
-
-            for key, value in template_vars.items():
-                content = content.replace(f"{{{{{key}}}}}", value)
+            # Apply template variables
+            content = _apply_template_variables(content, metrics, customer_name)
 
             # Convert markdown to HTML
             html_content = markdown.markdown(content)
@@ -558,18 +602,8 @@ class HTMLGenerator:
             with open(path, "r") as f:
                 content = f.read()
 
-            # Replace template variables
-            template_vars = {
-                "customer_name": customer_name,
-                "images_scanned": str(metrics['images_scanned']),
-                "total_customer_vulns": str(metrics['total_customer_vulns']),
-                "total_chainguard_vulns": str(metrics['total_chainguard_vulns']),
-                "reduction_percentage": f"{metrics['reduction_percentage']:.1f}%",
-                "total_reduction": str(metrics['total_reduction']),
-            }
-
-            for key, value in template_vars.items():
-                content = content.replace(f"{{{{{key}}}}}", value)
+            # Apply template variables
+            content = _apply_template_variables(content, metrics, customer_name)
 
             # Convert markdown to HTML
             html_content = markdown.markdown(content)

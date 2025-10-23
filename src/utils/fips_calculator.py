@@ -7,6 +7,8 @@ including initial implementation phases and ongoing maintenance.
 
 from dataclasses import dataclass
 
+from constants import DEFAULT_HOURLY_RATE
+
 
 @dataclass
 class FIPSPhase:
@@ -80,7 +82,7 @@ class FIPSCalculator:
         FIPSPhase("Compliance Monitoring", 6, 16, 2, 4),
     ]
 
-    def __init__(self, hourly_rate: float = 100.0):
+    def __init__(self, hourly_rate: float = DEFAULT_HOURLY_RATE):
         """
         Initialize FIPS calculator.
 

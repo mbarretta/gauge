@@ -12,12 +12,10 @@ import logging
 import subprocess
 from typing import Optional
 
+from constants import CHPS_SCORER_IMAGE
 from core.models import CHPSScore
 
 logger = logging.getLogger(__name__)
-
-# CHPS scorer container image
-CHPS_IMAGE = "ghcr.io/chps-dev/chps-scorer:latest"
 
 
 class CHPSScanner:
@@ -42,22 +40,22 @@ class CHPSScanner:
         if not self.chps_available:
             logger.warning(
                 f"CHPS container image not available. CHPS scoring will be skipped. "
-                f"Run: {docker_command} pull {CHPS_IMAGE}"
+                f"Run: {docker_command} pull {CHPS_SCORER_IMAGE}"
             )
 
     def _check_chps_available(self) -> bool:
         """Check if CHPS container image is available."""
         try:
-            logger.info(f"Checking CHPS image availability: {CHPS_IMAGE}")
+            logger.info(f"Checking CHPS image availability: {CHPS_SCORER_IMAGE}")
             # Try to pull the CHPS image if not already present
             result = subprocess.run(
-                [self.docker_command, "pull", CHPS_IMAGE],
+                [self.docker_command, "pull", CHPS_SCORER_IMAGE],
                 capture_output=True,
                 text=True,
                 timeout=120,
             )
             if result.returncode == 0:
-                logger.info(f"✓ CHPS scorer container image ready: {CHPS_IMAGE}")
+                logger.info(f"✓ CHPS scorer container image ready: {CHPS_SCORER_IMAGE}")
                 return True
             else:
                 logger.warning(f"✗ Failed to pull CHPS image: {result.stderr}")
@@ -99,7 +97,7 @@ class CHPSScanner:
                 "--rm",
                 "--privileged",
                 "-v", "/var/run/docker.sock:/var/run/docker.sock",
-                CHPS_IMAGE,
+                CHPS_SCORER_IMAGE,
                 "-o", "json",
                 "--skip-cves",
                 "--local",

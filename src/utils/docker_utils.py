@@ -10,6 +10,8 @@ import logging
 import subprocess
 from typing import Optional
 
+from constants import DEFAULT_PLATFORM
+
 logger = logging.getLogger(__name__)
 
 
@@ -132,7 +134,7 @@ class DockerClient:
         """
         try:
             # Default to linux/amd64 for consistency across environments
-            platform = platform or "linux/amd64"
+            platform = platform or DEFAULT_PLATFORM
 
             remote_digest = self.get_remote_digest(image)
             if not remote_digest:
@@ -198,7 +200,7 @@ class DockerClient:
         """
         try:
             # Default to linux/amd64 for consistency across environments
-            platform = platform or "linux/amd64"
+            platform = platform or DEFAULT_PLATFORM
 
             cmd = [self.runtime, "pull", "--platform", platform, image]
 

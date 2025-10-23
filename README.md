@@ -41,6 +41,7 @@
 - **Dual Output Types**: Generate vulnerability assessment summaries (HTML) or cost analysis reports (XLSX)
 - **CHPs Scoring**: Container Hardening and Provenance Scanner integration for evaluating non-CVE security factors like provenance, SBOM quality, signing, and container hardening practices
 - **Intelligent Caching**: Digest-based caching dramatically improves performance on repeated scans
+- **Checkpoint/Resume**: Automatically save progress and resume interrupted scans without losing work
 - **Parallel Scanning**: Multi-threaded image scanning for optimal performance
 - **Comprehensive Analysis**: Detailed vulnerability breakdowns by severity (Critical, High, Medium, Low, Negligible)
 
@@ -244,10 +245,12 @@ Optional header row is automatically skipped.
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--cache-dir` | .cache | Cache directory |
+| `--cache-dir` | `.cache` | Cache directory |
 | `--no-cache` | - | Disable caching |
 | `--clear-cache` | - | Clear cache before starting |
 | `--no-fresh-check` | - | Skip checking for fresh images |
+| `--resume` | - | Resume from previous checkpoint (if available) |
+| `--checkpoint-file` | `.gauge_checkpoint.json` | Checkpoint file path for resume functionality |
 
 ## Architecture
 
@@ -297,19 +300,25 @@ gauge/
 
 ## Caching System
 
-Gauge includes an intelligent caching system:
+Gauge includes two complementary performance systems:
 
-### How It Works
-- Uses image digests (SHA256) as cache keys
-- Automatically checks if remote images are newer
-- Stores scan results as individual JSON files
-- Platform-aware (different cache per platform)
+### Intelligent Caching
+- **Digest-based**: Uses image SHA256 digests as cache keys
+- **Automatic freshness**: Only pulls when remote digest differs
+- **Platform-aware**: Different cache per platform (linux/amd64, linux/arm64, etc.)
+- **Portable**: Cache can be shared between machines
+
+### Checkpoint/Resume
+- **Automatic**: Progress saved after each image pair scan
+- **Interruptible**: Safe to stop with Ctrl+C - no work lost
+- **Resumable**: Continue from where you left off with `--resume`
+- **Smart**: Only scans remaining pairs on resume
 
 ### Benefits
 - **Significant speedup**: Cached scans return instantly
-- **Automatic freshness**: Only pulls when remote digest differs
 - **Reliable**: Digest-based validation ensures accuracy
-- **Portable**: Cache can be shared between machines
+- **Resilient**: Interrupted scans can be resumed
+- **Efficient**: Perfect for scanning large fleets (50+ images)
 
 ### Cache Management
 
@@ -318,13 +327,19 @@ Gauge includes an intelligent caching system:
 # Cache: 15 hits, 5 misses (75.0% hit rate)
 
 # Clear cache before run
-gauge --clear-cache ...
+gauge --clear-cache
 
 # Disable caching
-gauge --no-cache ...
+gauge --no-cache
 
 # Custom cache location
-gauge --cache-dir /path/to/cache ...
+gauge --cache-dir /path/to/cache
+
+# Resume from checkpoint
+gauge --resume
+
+# Custom checkpoint file
+gauge --checkpoint-file /path/to/checkpoint.json
 ```
 
 ## Performance
@@ -402,6 +417,38 @@ gauge --source large-fleet.csv \
 
 This creates `fleet-assessment.html`.
 
+### Resume Interrupted Scan
+
+For long-running scans that may be interrupted, use checkpoint/resume functionality:
+
+```bash
+# Start a long scan (creates checkpoint automatically)
+gauge --source large-fleet.csv \
+      --output both \
+      --output-file-name report
+
+# If interrupted (Ctrl+C), you'll see:
+# Scan interrupted! Partial results saved to checkpoint.
+# Run with --resume to continue from: .gauge_checkpoint.json
+
+# Resume from where you left off
+gauge --source large-fleet.csv \
+      --output both \
+      --output-file-name report \
+      --resume
+
+# Output:
+# Resuming from checkpoint: .gauge_checkpoint.json
+# Loaded 15 previous scan results
+# Scanning 10 remaining pairs...
+```
+
+**Benefits:**
+- Automatically saves progress after each image pair
+- Resume skips already-scanned images
+- Safe to interrupt with Ctrl+C - no lost work
+- Useful for scanning 50+ image pairs
+
 ## Troubleshooting
 
 ### Common Issues
@@ -427,6 +474,12 @@ This creates `fleet-assessment.html`.
 - Clear cache with `--clear-cache`
 - Disable caching with `--no-cache`
 - Check cache directory permissions
+
+**Checkpoint/Resume issues**
+- Delete stale checkpoint: `rm .gauge_checkpoint.json`
+- Use different checkpoint file: `--checkpoint-file custom.json`
+- Checkpoint is JSON - safe to inspect/edit manually
+- Resume only works with same CSV file and image pairs
 
 ## Project Structure
 

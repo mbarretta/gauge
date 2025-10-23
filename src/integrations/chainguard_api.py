@@ -5,15 +5,17 @@ Provides access to Chainguard's vulnerability tracking API for
 historical CVE trends and projections.
 """
 
-import json
 import logging
 import subprocess
 from datetime import datetime, timezone
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+import requests
 
-API_BASE_URL = "https://console-api.enforce.dev"
+from constants import CHAINGUARD_API_URL
+from core.exceptions import IntegrationException
+
+logger = logging.getLogger(__name__)
 
 
 class ChainguardAPI:
@@ -69,30 +71,45 @@ class ChainguardAPI:
             to_date = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         try:
-            cmd = (
-                f'curl -H "Authorization: Bearer $(chainctl auth token)" '
-                f'-d "repo={repo}" -d "tag={tag}" '
-                f'-d "from={from_date}" -d "to={to_date}" '
-                f'"{API_BASE_URL}/registry/v1/vuln_reports/counts"'
-            )
-
+            # Get auth token from chainctl
             result = subprocess.run(
-                cmd,
-                shell=True,
+                ["chainctl", "auth", "token"],
                 capture_output=True,
                 text=True,
-                timeout=30,
-                check=True,
+                timeout=10,
             )
+            if result.returncode != 0:
+                raise IntegrationException("chainctl", "Failed to get auth token")
 
-            return json.loads(result.stdout.strip())
+            token = result.stdout.strip()
 
-        except subprocess.TimeoutExpired:
+            # Make API request using requests library
+            response = requests.post(
+                f"{CHAINGUARD_API_URL}/registry/v1/vuln_reports/counts",
+                headers={"Authorization": f"Bearer {token}"},
+                data={
+                    "repo": repo,
+                    "tag": tag,
+                    "from": from_date,
+                    "to": to_date,
+                },
+                timeout=30,
+            )
+            response.raise_for_status()
+
+            return response.json()
+
+        except requests.Timeout:
             logger.warning(f"Timeout fetching vulnerability data for {repo}:{tag}")
+            return {"items": []}
+        except requests.RequestException as e:
+            logger.warning(
+                f"Failed to fetch vulnerability data for {repo}:{tag}: {e}"
+            )
             return {"items": []}
         except Exception as e:
             logger.warning(
-                f"Failed to fetch vulnerability data for {repo}:{tag}: {e}"
+                f"Unexpected error fetching vulnerability data for {repo}:{tag}: {e}"
             )
             return {"items": []}
 

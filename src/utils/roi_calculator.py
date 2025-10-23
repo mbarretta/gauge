@@ -7,18 +7,9 @@ both for existing backlog and projected future vulnerabilities.
 
 from dataclasses import dataclass
 
+from constants import DEFAULT_HOURS_PER_VULNERABILITY, DEFAULT_HOURLY_RATE
 from core.models import ImageAnalysis, ScanResult
-
-
-# Historical CVE monthly ratios (fallback when API data unavailable)
-# These represent the average monthly new CVE rate as a ratio of current CVEs
-CVE_MONTHLY_RATIOS = {
-    "CRITICAL": 0.06226879415733905,
-    "HIGH": 0.048255074492743404,
-    "MEDIUM": 0.09295663633080238,
-    "LOW": 0.039432287834430285,
-    "NEGLIGIBLE": 0.30331818635773494,
-}
+from utils.cve_ratios import get_cve_monthly_ratios
 
 
 @dataclass
@@ -44,8 +35,8 @@ class ROICalculator:
 
     def __init__(
         self,
-        hours_per_vulnerability: float = 3.0,
-        hourly_rate: float = 100.0,
+        hours_per_vulnerability: float = DEFAULT_HOURS_PER_VULNERABILITY,
+        hourly_rate: float = DEFAULT_HOURLY_RATE,
     ):
         """
         Initialize ROI calculator.
@@ -78,6 +69,9 @@ class ROICalculator:
         """
         Estimate new CVEs per month for an image based on historical ratios.
 
+        Attempts to fetch dynamic CVE growth rates from Chainguard API when available.
+        Falls back to static historical ratios if API is unavailable.
+
         Args:
             analysis: Image analysis
 
@@ -86,11 +80,14 @@ class ROICalculator:
         """
         vuln = analysis.vulnerabilities
 
-        estimated_critical = vuln.critical * CVE_MONTHLY_RATIOS["CRITICAL"]
-        estimated_high = vuln.high * CVE_MONTHLY_RATIOS["HIGH"]
-        estimated_medium = vuln.medium * CVE_MONTHLY_RATIOS["MEDIUM"]
-        estimated_low = vuln.low * CVE_MONTHLY_RATIOS["LOW"]
-        estimated_negligible = vuln.negligible * CVE_MONTHLY_RATIOS["NEGLIGIBLE"]
+        # Get ratios (dynamic from API or static fallback)
+        ratios = get_cve_monthly_ratios(analysis.name, use_api=True)
+
+        estimated_critical = vuln.critical * ratios["CRITICAL"]
+        estimated_high = vuln.high * ratios["HIGH"]
+        estimated_medium = vuln.medium * ratios["MEDIUM"]
+        estimated_low = vuln.low * ratios["LOW"]
+        estimated_negligible = vuln.negligible * ratios["NEGLIGIBLE"]
 
         return (
             estimated_critical

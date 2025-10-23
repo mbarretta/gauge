@@ -4,16 +4,16 @@ CISA Known Exploited Vulnerabilities (KEV) Catalog integration.
 Fetches and checks CVEs against CISA's official KEV catalog.
 """
 
-import json
 import logging
-import subprocess
 from typing import Optional
 
+import requests
+
+from constants import KEV_CATALOG_URL
+from core.exceptions import IntegrationException
 from core.models import KEVEntry
 
 logger = logging.getLogger(__name__)
-
-KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 
 class KEVCatalog:
@@ -39,16 +39,13 @@ class KEVCatalog:
         """
         try:
             logger.info("Fetching KEV catalog from CISA...")
-            result = subprocess.run(
-                f'curl -s "{KEV_URL}"',
-                shell=True,
-                capture_output=True,
-                text=True,
+            response = requests.get(
+                KEV_CATALOG_URL,
                 timeout=30,
-                check=True,
             )
+            response.raise_for_status()
 
-            data = json.loads(result.stdout.strip())
+            data = response.json()
 
             # Parse KEV entries
             for vuln in data.get("vulnerabilities", []):
@@ -66,11 +63,14 @@ class KEVCatalog:
             logger.info(f"Loaded {len(self.vulnerabilities)} KEV entries")
             return True
 
-        except subprocess.TimeoutExpired:
+        except requests.Timeout:
             logger.warning("Timeout loading KEV data")
             return False
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning(f"Failed to load KEV data: {e}")
+            return False
+        except Exception as e:
+            logger.warning(f"Unexpected error loading KEV data: {e}")
             return False
 
     def is_kev(self, cve_id: str) -> bool:

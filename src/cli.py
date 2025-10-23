@@ -12,6 +12,12 @@ import logging
 import sys
 from pathlib import Path
 
+from constants import (
+    DEFAULT_HOURS_PER_VULNERABILITY,
+    DEFAULT_HOURLY_RATE,
+    DEFAULT_MAX_WORKERS,
+    DEFAULT_PLATFORM,
+)
 from core.cache import ScanCache
 from core.models import ImagePair
 from core.scanner import VulnerabilityScanner
@@ -101,13 +107,13 @@ Examples:
     common.add_argument(
         "--max-workers",
         type=int,
-        default=4,
-        help="Number of parallel scanning threads (default: 4)",
+        default=DEFAULT_MAX_WORKERS,
+        help=f"Number of parallel scanning threads (default: {DEFAULT_MAX_WORKERS})",
     )
     common.add_argument(
         "--platform",
-        default="linux/amd64",
-        help="Platform for image pulls and scans (default: linux/amd64)",
+        default=DEFAULT_PLATFORM,
+        help=f"Platform for image pulls and scans (default: {DEFAULT_PLATFORM})",
     )
 
     # HTML-specific options (assessment summary)
@@ -133,15 +139,15 @@ Examples:
         "--hours-per-vuln",
         "--vulnhours",
         type=float,
-        default=3.0,
-        help="Average hours to remediate one CVE (default: 3.0)",
+        default=DEFAULT_HOURS_PER_VULNERABILITY,
+        help=f"Average hours to remediate one CVE (default: {DEFAULT_HOURS_PER_VULNERABILITY})",
     )
     xlsx_opts.add_argument(
         "--hourly-rate",
         "--hourlyrate",
         type=float,
-        default=100.0,
-        help="Engineering hourly rate in USD (default: 100.0)",
+        default=DEFAULT_HOURLY_RATE,
+        help=f"Engineering hourly rate in USD (default: {DEFAULT_HOURLY_RATE})",
     )
     xlsx_opts.add_argument(
         "--auto-detect-fips",
@@ -172,6 +178,17 @@ Examples:
         action="store_true",
         help="Skip checking for fresh images (faster but may use stale images)",
     )
+    cache_opts.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from previous checkpoint (if available)",
+    )
+    cache_opts.add_argument(
+        "--checkpoint-file",
+        type=Path,
+        default=Path(".gauge_checkpoint.json"),
+        help="Checkpoint file path (default: .gauge_checkpoint.json)",
+    )
 
     # CHPS integration
     parser.add_argument(
@@ -193,10 +210,22 @@ Examples:
 
 def load_image_pairs(csv_path: Path) -> list[ImagePair]:
     """
-    Load image pairs from CSV file.
+    Load image pairs from CSV file with validation.
 
     Expected format: alternative_image,chainguard_image
+
+    Args:
+        csv_path: Path to CSV file
+
+    Returns:
+        List of validated ImagePair objects
+
+    Raises:
+        SystemExit: If file not found or validation fails
     """
+    from core.exceptions import ValidationException
+    from utils.validation import validate_image_reference
+
     pairs = []
 
     try:
@@ -205,7 +234,7 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
 
             for line_num, row in enumerate(reader, 1):
                 # Skip empty lines
-                if not row or not any(row):
+                if not row or not any(cell.strip() for cell in row):
                     continue
 
                 # Skip header if it looks like a header
@@ -216,14 +245,40 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
                     continue
 
                 # Parse pair
-                if len(row) >= 2:
-                    alt_image = row[0].strip()
-                    cgr_image = row[1].strip()
+                if len(row) < 2:
+                    logger.warning(f"Line {line_num}: insufficient columns, skipping")
+                    continue
 
-                    if cgr_image and alt_image:
-                        pairs.append(ImagePair(cgr_image, alt_image))
-                else:
-                    logger.warning(f"Skipping malformed line {line_num}: {row}")
+                alternative_image = row[0].strip()
+                chainguard_image = row[1].strip()
+
+                if not alternative_image or not chainguard_image:
+                    logger.warning(f"Line {line_num}: empty image reference, skipping")
+                    continue
+
+                try:
+                    # Validate image references
+                    alternative_image = validate_image_reference(
+                        alternative_image,
+                        f"alternative_image (line {line_num})"
+                    )
+                    chainguard_image = validate_image_reference(
+                        chainguard_image,
+                        f"chainguard_image (line {line_num})"
+                    )
+
+                    # Check images aren't identical
+                    if alternative_image == chainguard_image:
+                        logger.warning(
+                            f"Line {line_num}: images are identical, skipping"
+                        )
+                        continue
+
+                    pairs.append(ImagePair(chainguard_image, alternative_image))
+
+                except ValidationException as e:
+                    logger.error(f"Validation error: {e}")
+                    sys.exit(1)
 
     except FileNotFoundError:
         logger.error(f"Source file not found: {csv_path}")
@@ -294,9 +349,54 @@ def main():
     kev_catalog = KEVCatalog()
     kev_catalog.load()
 
-    # Scan images
-    logger.info("Starting vulnerability scans...")
-    results = scanner.scan_image_pairs_parallel(pairs)
+    # Setup checkpoint/resume
+    from core.persistence import ScanResultPersistence
+    persistence = ScanResultPersistence(args.checkpoint_file)
+
+    # Check for resume
+    if args.resume and persistence.exists():
+        logger.info(f"Resuming from checkpoint: {args.checkpoint_file}")
+        results, metadata = persistence.load_results()
+        logger.info(f"Loaded {len(results)} previous scan results")
+
+        # Get already scanned images
+        scanned_pairs = {
+            (r.pair.alternative_image, r.pair.chainguard_image)
+            for r in results if r.scan_successful
+        }
+
+        # Filter out already scanned pairs
+        remaining_pairs = [
+            p for p in pairs
+            if (p.alternative_image, p.chainguard_image) not in scanned_pairs
+        ]
+
+        if remaining_pairs:
+            logger.info(f"Scanning {len(remaining_pairs)} remaining pairs...")
+            new_results = scanner.scan_image_pairs_parallel(remaining_pairs)
+            results.extend(new_results)
+
+            # Save updated checkpoint
+            persistence.save_results(results)
+        else:
+            logger.info("All pairs already scanned, using checkpoint results")
+    else:
+        # Fresh scan
+        logger.info("Starting vulnerability scans...")
+        try:
+            results = scanner.scan_image_pairs_parallel(pairs)
+
+            # Save checkpoint after successful scan
+            persistence.save_results(results, metadata={
+                "pairs_count": len(pairs),
+                "platform": args.platform,
+            })
+            logger.debug(f"Checkpoint saved: {args.checkpoint_file}")
+
+        except KeyboardInterrupt:
+            logger.warning("\nScan interrupted! Partial results saved to checkpoint.")
+            logger.info(f"Run with --resume to continue from: {args.checkpoint_file}")
+            sys.exit(1)
 
     # Show cache summary
     logger.info(cache.summary())
@@ -304,66 +404,82 @@ def main():
     # Generate report(s) based on output type
     if output_format == "both":
         # Generate both outputs with appropriate extensions
+        from outputs.config import HTMLGeneratorConfig, XLSXGeneratorConfig
+
         html_path = Path(f"{args.output_file_name}.html")
         xlsx_path = Path(f"{args.output_file_name}.xlsx")
 
         # Generate HTML assessment summary
         html_generator = HTMLGenerator()
-        # Only pass exec-summary and appendix if they exist
         exec_summary = args.exec_summary if args.exec_summary.exists() else None
         appendix = args.appendix if args.appendix.exists() else None
+        html_config = HTMLGeneratorConfig(
+            customer_name=args.customer_name,
+            platform=args.platform,
+            exec_summary_path=exec_summary,
+            appendix_path=appendix,
+        )
         html_generator.generate(
             results=results,
             output_path=html_path,
-            customer_name=args.customer_name,
-            exec_summary_path=exec_summary,
-            appendix_path=appendix,
-            platform=args.platform,
+            config=html_config,
         )
 
         # Generate XLSX cost analysis
         xlsx_generator = XLSXGenerator()
-        xlsx_generator.generate(
-            results=results,
-            output_path=xlsx_path,
+        xlsx_config = XLSXGeneratorConfig(
             customer_name=args.customer_name,
+            platform=args.platform,
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             auto_detect_fips=args.auto_detect_fips,
-            platform=args.platform,
+        )
+        xlsx_generator.generate(
+            results=results,
+            output_path=xlsx_path,
+            config=xlsx_config,
         )
 
         output_files = [html_path, xlsx_path]
 
     elif output_format == "cost_analysis":
         # Generate XLSX cost analysis
+        from outputs.config import XLSXGeneratorConfig
+
         xlsx_path = Path(f"{args.output_file_name}.xlsx")
         generator = XLSXGenerator()
-        generator.generate(
-            results=results,
-            output_path=xlsx_path,
+        xlsx_config = XLSXGeneratorConfig(
             customer_name=args.customer_name,
+            platform=args.platform,
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             auto_detect_fips=args.auto_detect_fips,
-            platform=args.platform,
+        )
+        generator.generate(
+            results=results,
+            output_path=xlsx_path,
+            config=xlsx_config,
         )
         output_files = [xlsx_path]
 
     elif output_format == "vuln_summary":
         # Generate HTML assessment summary
+        from outputs.config import HTMLGeneratorConfig
+
         html_path = Path(f"{args.output_file_name}.html")
         generator = HTMLGenerator()
-        # Only pass exec-summary and appendix if they exist
         exec_summary = args.exec_summary if args.exec_summary.exists() else None
         appendix = args.appendix if args.appendix.exists() else None
+        html_config = HTMLGeneratorConfig(
+            customer_name=args.customer_name,
+            platform=args.platform,
+            exec_summary_path=exec_summary,
+            appendix_path=appendix,
+        )
         generator.generate(
             results=results,
             output_path=html_path,
-            customer_name=args.customer_name,
-            exec_summary_path=exec_summary,
-            appendix_path=appendix,
-            platform=args.platform,
+            config=html_config,
         )
         output_files = [html_path]
 

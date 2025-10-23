@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 
 from core.models import ScanResult
+from outputs.config import GeneratorConfig
 
 
 class OutputGenerator(ABC):
@@ -22,7 +23,7 @@ class OutputGenerator(ABC):
         self,
         results: list[ScanResult],
         output_path: Path,
-        **kwargs,
+        config: GeneratorConfig,
     ) -> None:
         """
         Generate report from scan results.
@@ -30,7 +31,7 @@ class OutputGenerator(ABC):
         Args:
             results: List of scan results to include in report
             output_path: Where to write the output file
-            **kwargs: Additional format-specific options
+            config: Generator-specific configuration
         """
         pass
 
