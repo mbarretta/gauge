@@ -14,7 +14,6 @@
 - [Quick Start](#quick-start)
 - [Input Format](#input-format)
 - [Command-Line Options](#command-line-options)
-- [Architecture](#architecture)
 - [Caching System](#caching-system)
 - [Performance](#performance)
 - [Examples](#examples)
@@ -252,52 +251,6 @@ Optional header row is automatically skipped.
 | `--resume` | - | Resume from previous checkpoint (if available) |
 | `--checkpoint-file` | `.gauge_checkpoint.json` | Checkpoint file path for resume functionality |
 
-## Architecture
-
-Gauge uses a modern `src/` layout with clean separation of concerns:
-
-```
-gauge/
-├── src/                   # Source code (modern src/ layout)
-│   ├── core/              # Core business logic
-│   │   ├── __init__.py
-│   │   ├── models.py      # Domain models
-│   │   ├── scanner.py     # Vulnerability scanning
-│   │   └── cache.py       # Intelligent caching
-│   ├── outputs/           # Output generators
-│   │   ├── __init__.py
-│   │   ├── base.py        # Abstract interface
-│   │   ├── html_generator.py
-│   │   └── xlsx_generator.py
-│   ├── integrations/      # External services
-│   │   ├── __init__.py
-│   │   ├── kev_catalog.py     # CISA KEV integration
-│   │   └── chainguard_api.py
-│   ├── utils/             # Utility modules
-│   │   ├── __init__.py
-│   │   ├── docker_utils.py
-│   │   ├── roi_calculator.py
-│   │   └── fips_calculator.py
-│   ├── __init__.py        # Package root
-│   ├── __main__.py        # Entry point for python -m gauge
-│   └── cli.py             # Command-line interface
-│
-├── tests/                 # Unit tests
-│
-├── README.md              # This file
-├── MIGRATION.md           # Migration guide
-├── requirements.txt       # Dependencies
-└── setup.py               # Package configuration
-```
-
-### Key Design Principles
-
-1. **SOLID Principles**: Clean interfaces, single responsibilities
-2. **Immutable Data**: Frozen dataclasses prevent accidental mutation
-3. **Type Safety**: Comprehensive type hints throughout
-4. **Modern Python**: Uses `src/` layout (Python best practice)
-5. **Dependency Injection**: Testable, mockable components
-
 ## Caching System
 
 Gauge includes two complementary performance systems:
@@ -485,36 +438,51 @@ gauge --source large-fleet.csv \
 
 ```
 gauge/
-├── src/                          # Source code
-│   ├── core/                     # Core functionality
-│   │   ├── cache.py             # Digest-based scan caching
-│   │   ├── models.py            # Data models (ImageAnalysis, ScanResult, CHPSScore)
-│   │   └── scanner.py           # Vulnerability scanner orchestration
-│   ├── integrations/            # External tool integrations
-│   │   ├── chainguard_api.py   # Chainguard API client (future)
-│   │   └── kev_catalog.py      # CISA KEV catalog integration
-│   ├── outputs/                 # Report generators
-│   │   ├── base.py             # Base generator interface
-│   │   ├── html_generator.py  # HTML assessment summary generator
-│   │   └── xlsx_generator.py  # XLSX cost analysis generator
-│   ├── utils/                   # Utility modules
-│   │   ├── chps_utils.py       # CHPS (Container Hardening) integration
-│   │   ├── docker_utils.py     # Docker/Podman operations
-│   │   ├── fips_calculator.py  # FIPS implementation cost calculations
-│   │   └── roi_calculator.py   # ROI and CVE cost projections
-│   └── cli.py                   # Command-line interface
-├── resources/                    # Static resources
-│   ├── gauge-logo-black.png    # Gauge logo (dark backgrounds)
-│   ├── gauge-logo-white.png    # Gauge logo (light backgrounds)
-│   └── linky-white.png         # Chainguard logo for HTML reports
-├── tests/                        # Unit tests
-├── example-images.csv           # Sample image pairs for testing
-├── sample-exec-summary.md       # Example executive summary template
-├── sample-appendix.md           # Example appendix template
-├── requirements.txt             # Python dependencies
-├── setup.py                     # Package installation config
-├── MIGRATION.md                 # Migration guide from legacy tools
-└── README.md                    # This file
+├── src/                              # Source code
+│   ├── core/                         # Core functionality
+│   │   ├── cache.py                 # Digest-based scan caching
+│   │   ├── exceptions.py            # Exception hierarchy (GaugeException, ScanException, etc.)
+│   │   ├── models.py                # Data models (ImageAnalysis, ScanResult, CHPSScore)
+│   │   ├── persistence.py           # Checkpoint/resume functionality
+│   │   ├── scanner.py               # Vulnerability scanner orchestration
+│   │   └── scanner_interface.py    # Scanner plugin interface (VulnerabilityProvider)
+│   ├── integrations/                # External tool integrations
+│   │   ├── chainguard_api.py       # Chainguard API client for CVE growth rates
+│   │   ├── grype_provider.py       # Grype scanner provider implementation
+│   │   └── kev_catalog.py          # CISA KEV catalog integration
+│   ├── outputs/                     # Report generators
+│   │   ├── base.py                 # Base generator interface
+│   │   ├── config.py               # Generator configuration dataclasses
+│   │   ├── html_generator.py      # HTML assessment summary generator
+│   │   ├── xlsx_formats.py         # XLSX formatting styles (factory pattern)
+│   │   ├── xlsx_generator.py      # XLSX cost analysis generator
+│   │   └── xlsx_writers.py         # XLSX section writers (modular components)
+│   ├── utils/                       # Utility modules
+│   │   ├── chps_utils.py           # CHPS (Container Hardening) integration
+│   │   ├── cve_ratios.py           # CVE growth rate calculation with API fallback
+│   │   ├── docker_utils.py         # Docker/Podman operations
+│   │   ├── fips_calculator.py      # FIPS implementation cost calculations
+│   │   ├── roi_calculator.py       # ROI and CVE cost projections
+│   │   ├── validation.py           # Input validation utilities
+│   │   └── vulnerability_utils.py  # Vulnerability aggregation logic
+│   ├── constants.py                 # Centralized configuration constants
+│   └── cli.py                       # Command-line interface
+├── tests/                            # Unit tests (pytest)
+│   ├── conftest.py                  # Shared test fixtures
+│   ├── test_models.py              # Model tests
+│   └── test_validation.py          # Validation tests
+├── resources/                        # Static resources
+│   ├── gauge-logo-black.png        # Gauge logo (dark backgrounds)
+│   ├── gauge-logo-white.png        # Gauge logo (light backgrounds)
+│   └── linky-white.png             # Chainguard logo for HTML reports
+├── pytest.ini                        # Pytest configuration
+├── example-images.csv               # Sample image pairs for testing
+├── sample-exec-summary.md           # Example executive summary template
+├── sample-appendix.md               # Example appendix template
+├── requirements.txt                 # Python dependencies
+├── setup.py                         # Package installation config
+├── MIGRATION.md                     # Migration guide from legacy tools
+└── README.md                        # This file
 ```
 
 ### Key Components
@@ -523,20 +491,48 @@ gauge/
 - `scanner.py`: Orchestrates Syft (SBOM) → Grype (CVE scanning) → CHPS (hardening) pipeline
 - `cache.py`: Digest-based caching for performance optimization
 - `models.py`: Immutable data structures for type safety
+- `exceptions.py`: Standardized exception hierarchy for consistent error handling
+- `persistence.py`: Checkpoint/resume functionality for long-running scans
+- `scanner_interface.py`: Plugin interface for extensible scanner integration
 
 **Report Generators:**
 - `html_generator.py`: Professional assessment summaries with Chainguard branding
-- `xlsx_generator.py`: Interactive cost analysis with ROI calculations and formulas
+- `xlsx_generator.py`: Interactive cost analysis with ROI calculations
+- `xlsx_writers.py`: Modular section writers following single-responsibility principle
+- `xlsx_formats.py`: Formatting factory pattern eliminates style duplication
+- `config.py`: Strongly-typed generator configuration dataclasses
 
 **Integrations:**
-- `chps_utils.py`: Containerized CHPS execution with score recalculation for skipped CVE checks
-- `docker_utils.py`: Unified Docker/Podman interface with platform awareness
+- `grype_provider.py`: Grype scanner provider implementing plugin interface
+- `chainguard_api.py`: Chainguard API client for dynamic CVE growth rates
 - `kev_catalog.py`: CISA Known Exploited Vulnerabilities catalog integration
+- `chps_utils.py`: Containerized CHPS execution with score recalculation
+
+**Utilities:**
+- `validation.py`: Comprehensive input validation (images, paths, numbers, names)
+- `vulnerability_utils.py`: Centralized vulnerability aggregation logic
+- `cve_ratios.py`: CVE growth rate calculation with API fallback
+- `docker_utils.py`: Unified Docker/Podman interface with platform awareness
+- `roi_calculator.py`: ROI and CVE cost projections
+- `fips_calculator.py`: FIPS implementation cost calculations
+
+**Tests:**
+- `conftest.py`: Shared pytest fixtures for test data and temporary resources
+- `test_models.py`: Comprehensive model tests (immutability, serialization)
+- `test_validation.py`: Input validation tests (edge cases, error handling)
 
 **Resources:**
-- Logos and branding assets used in HTML reports
 - `linky-white.png`: Chainguard logo embedded in HTML header
 - `gauge-logo-*.png`: Gauge branding for documentation
+- `pytest.ini`: Pytest configuration with markers and coverage options
+
+### Design Principles
+
+- **SOLID Principles**: Clean interfaces, single responsibilities
+- **Immutable Data**: Frozen dataclasses prevent accidental mutation
+- **Type Safety**: Comprehensive type hints throughout
+- **Modern Python**: Uses `src/` layout (Python best practice)
+- **Dependency Injection**: Testable, mockable components
 
 ## Development
 
@@ -553,13 +549,25 @@ python -m src.cli --help
 ### Running Tests
 
 ```bash
-# Run unit tests (when available)
+# Run all tests
 pytest tests/
 
-# Type checking
+# Run specific test file
+pytest tests/test_models.py
+
+# Run with verbose output
+pytest tests/ -v
+
+# Run with coverage report
+pytest tests/ --cov=src --cov-report=term-missing
+
+# Run only unit tests (fast)
+pytest tests/ -m unit
+
+# Type checking (if mypy installed)
 mypy src/
 
-# Code formatting
+# Code formatting (if black installed)
 black src/
 ```
 
