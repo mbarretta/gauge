@@ -215,3 +215,51 @@ class DockerClient:
         except subprocess.TimeoutExpired:
             logger.warning(f"Timeout pulling {image}")
             return False
+
+    def ensure_chainguard_auth(self) -> bool:
+        """
+        Ensure authentication to cgr.dev/chainguard-private via chainctl.
+
+        This prevents multiple threads from spawning separate authentication
+        requests when pulling Chainguard private images.
+
+        Returns:
+            True if authenticated successfully, False otherwise
+        """
+        try:
+            # Check if chainctl is available
+            result = subprocess.run(
+                ["chainctl", "version"],
+                capture_output=True,
+                timeout=5
+            )
+
+            if result.returncode != 0:
+                logger.debug("chainctl not found, skipping Chainguard authentication")
+                return False
+
+            # Perform authentication via chainctl auth login with org-name
+            logger.info("Authenticating to cgr.dev/chainguard-private via chainctl...")
+            result = subprocess.run(
+                ["chainctl", "auth", "login", "--org-name", "chainguard-private"],
+                capture_output=True,
+                timeout=60
+            )
+
+            if result.returncode == 0:
+                logger.info("✓ Authenticated to cgr.dev/chainguard-private")
+                return True
+            else:
+                stderr = result.stderr.decode('utf-8') if result.stderr else ""
+                logger.warning(f"chainctl auth login failed: {stderr}")
+                return False
+
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout during chainctl auth login")
+            return False
+        except FileNotFoundError:
+            logger.debug("chainctl not found in PATH")
+            return False
+        except Exception as e:
+            logger.error(f"Error during Chainguard authentication: {e}")
+            return False

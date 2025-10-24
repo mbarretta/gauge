@@ -335,6 +335,13 @@ def main():
         logger.info("Clearing cache...")
         cache.clear()
 
+    # Pre-authenticate to cgr.dev/chainguard-private before parallel operations
+    # This prevents each thread from spawning separate authentication requests
+    if not docker_client.ensure_chainguard_auth():
+        logger.error("Failed to authenticate to cgr.dev/chainguard-private")
+        logger.error("Please ensure chainctl is installed and you have access to chainguard-private")
+        sys.exit(1)
+
     # Initialize scanner
     scanner = VulnerabilityScanner(
         cache=cache,
