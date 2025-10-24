@@ -9,7 +9,7 @@ import xlsxwriter
 from xlsxwriter.utility import xl_rowcol_to_cell
 
 from constants import DEFAULT_PLATFORM
-from core.models import ImageAnalysis
+from core.models import ImageAnalysis, ScanResult
 from outputs.xlsx_formats import OutputFormatter
 from utils.cve_ratios import get_cve_monthly_ratios
 from utils.fips_calculator import FIPSCalculator
@@ -209,12 +209,12 @@ class ROISectionWriter(BaseSectionWriter):
         self.backlog_cost_cell = None
         self.yearly_cost_cell = None
 
-    def write(self, alternative_analyses: list[ImageAnalysis]) -> tuple[str, str, int]:
+    def write(self, scan_results: list["ScanResult"]) -> tuple[str, str, int]:
         """
         Write ROI estimation sections.
 
         Args:
-            alternative_analyses: Alternative image analyses
+            scan_results: Scan results with image pair information
 
         Returns:
             Tuple of (backlog_cost_cell, yearly_cost_cell, final_row)
@@ -268,14 +268,14 @@ class ROISectionWriter(BaseSectionWriter):
         self.row += 2
 
         # Backlog section
-        self._write_backlog_section(alternative_analyses)
+        self._write_backlog_section(scan_results)
 
         # Estimated future CVEs section
-        self._write_estimated_cves_section(alternative_analyses)
+        self._write_estimated_cves_section(scan_results)
 
         return self.backlog_cost_cell, self.yearly_cost_cell, self.row
 
-    def _write_backlog_section(self, alternative_analyses: list[ImageAnalysis]):
+    def _write_backlog_section(self, scan_results: list["ScanResult"]):
         """Write CVE backlog remediation section."""
         self.worksheet.merge_range(
             self.row,
@@ -307,7 +307,8 @@ class ROISectionWriter(BaseSectionWriter):
         backlog_hours_start = xl_rowcol_to_cell(self.row, self.col + 7)
         backlog_cost_start = xl_rowcol_to_cell(self.row, self.col + 8)
 
-        for analysis in alternative_analyses:
+        for result in scan_results:
+            analysis = result.alternative_analysis
             vuln = analysis.vulnerabilities
 
             # Image name
@@ -385,7 +386,7 @@ class ROISectionWriter(BaseSectionWriter):
         )
         self.row += 2
 
-    def _write_estimated_cves_section(self, alternative_analyses: list[ImageAnalysis]):
+    def _write_estimated_cves_section(self, scan_results: list["ScanResult"]):
         """Write estimated future CVEs section."""
         self.worksheet.merge_range(
             self.row,
@@ -416,11 +417,16 @@ class ROISectionWriter(BaseSectionWriter):
         est_hours_start = xl_rowcol_to_cell(self.row, self.col + 7)
         est_cost_start = xl_rowcol_to_cell(self.row, self.col + 8)
 
-        for analysis in alternative_analyses:
+        for result in scan_results:
+            analysis = result.alternative_analysis
             vuln = analysis.vulnerabilities
 
-            # Get CVE growth ratios (dynamic from API or static fallback)
-            ratios = get_cve_monthly_ratios(analysis.name, use_api=True)
+            # Get CVE growth ratios from Chainguard image data (dynamic from API or static fallback)
+            ratios = get_cve_monthly_ratios(
+                image_name=analysis.name,
+                chainguard_image_name=result.pair.chainguard_image,
+                use_api=True
+            )
 
             # Calculate estimates
             est_critical = vuln.critical * ratios["CRITICAL"]

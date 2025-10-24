@@ -84,10 +84,12 @@ class ChainguardAPI:
             token = result.stdout.strip()
 
             # Make API request using requests library
-            response = requests.post(
+            response = requests.get(
                 f"{CHAINGUARD_API_URL}/registry/v1/vuln_reports/counts",
-                headers={"Authorization": f"Bearer {token}"},
-                data={
+                headers={
+                    "Authorization": f"Bearer {token}",
+                },
+                params={
                     "repo": repo,
                     "tag": tag,
                     "from": from_date,
@@ -101,6 +103,17 @@ class ChainguardAPI:
 
         except requests.Timeout:
             logger.warning(f"Timeout fetching vulnerability data for {repo}:{tag}")
+            return {"items": []}
+        except requests.HTTPError as e:
+            # Check if it's a 403 - likely no data available for this image
+            if e.response.status_code == 403:
+                logger.debug(
+                    f"No vulnerability data available for {repo}:{tag} (API returned 403 - image may not be tracked)"
+                )
+            else:
+                logger.warning(
+                    f"HTTP error fetching vulnerability data for {repo}:{tag}: {e}"
+                )
             return {"items": []}
         except requests.RequestException as e:
             logger.warning(

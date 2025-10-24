@@ -16,18 +16,21 @@ logger = logging.getLogger(__name__)
 
 def get_cve_monthly_ratios(
     image_name: Optional[str] = None,
+    chainguard_image_name: Optional[str] = None,
     use_api: bool = True,
 ) -> dict[str, float]:
     """
     Get CVE monthly growth ratios with API fallback.
 
     This function attempts to fetch dynamic CVE growth rates from the Chainguard API
-    when available. If the API call fails or returns no data, it falls back to
-    historical static constants defined in constants.py.
+    for the corresponding Chainguard image, using that data as a proxy for estimating
+    CVE growth in the alternative image. If the API call fails or returns no data,
+    it falls back to historical static constants defined in constants.py.
 
     Args:
-        image_name: Full image reference (e.g., "python:3.12"). If provided and use_api
-                   is True, will attempt to fetch dynamic ratios for this specific image.
+        image_name: Full alternative image reference (e.g., "python:3.12"). Used for logging.
+        chainguard_image_name: Corresponding Chainguard image (e.g., "cgr.dev/chainguard/python:latest").
+                              If provided, API will query this image's historical CVE data.
         use_api: Whether to attempt API call. Set to False to skip API and use static ratios.
 
     Returns:
@@ -35,32 +38,33 @@ def get_cve_monthly_ratios(
         Keys: "CRITICAL", "HIGH", "MEDIUM", "LOW", "NEGLIGIBLE"
 
     Example:
-        >>> ratios = get_cve_monthly_ratios("python:3.12")
+        >>> ratios = get_cve_monthly_ratios("python:3.12", "cgr.dev/chainguard/python:latest")
         >>> monthly_new_critical = current_critical_count * ratios["CRITICAL"]
     """
-    # If API disabled or no image specified, use static fallback
-    if not use_api or not image_name:
+    # If API disabled or no chainguard image specified, use static fallback
+    if not use_api or not chainguard_image_name:
         logger.debug("Using static CVE monthly ratios (fallback)")
         return CVE_MONTHLY_RATIOS
 
-    # Try to fetch dynamic ratios from API
+    # Try to fetch dynamic ratios from API using Chainguard image data
     try:
         from integrations.chainguard_api import ChainguardAPI
 
-        # Parse image name to extract repo and tag
-        repo, tag = _parse_image_name(image_name)
+        # Parse Chainguard image name to extract repo and tag
+        repo, tag = _parse_image_name(chainguard_image_name)
         if not repo or not tag:
-            logger.debug(f"Could not parse image name: {image_name}, using static ratios")
+            logger.debug(f"Could not parse Chainguard image name: {chainguard_image_name}, using static ratios")
             return CVE_MONTHLY_RATIOS
 
         # Initialize API client
         api = ChainguardAPI()
 
-        # Fetch dynamic growth rates
+        # Fetch dynamic growth rates from Chainguard image
         dynamic_ratios = api.calculate_cve_growth_rate(repo, tag)
 
         if dynamic_ratios:
-            logger.info(f"Using dynamic CVE growth rates for {repo}:{tag}")
+            image_desc = f"{image_name} (using {repo}:{tag} data)" if image_name else f"{repo}:{tag}"
+            logger.info(f"Using dynamic CVE growth rates for {image_desc}")
             # Normalize the keys to match our expected format
             normalized = {
                 "CRITICAL": dynamic_ratios.get("CRITICAL", CVE_MONTHLY_RATIOS["CRITICAL"]),
@@ -71,7 +75,8 @@ def get_cve_monthly_ratios(
             }
             return normalized
         else:
-            logger.debug(f"No dynamic data available for {repo}:{tag}, using static ratios")
+            image_desc = f"{image_name} ({repo}:{tag})" if image_name else f"{repo}:{tag}"
+            logger.debug(f"No dynamic data available for {image_desc}, using static ratios")
             return CVE_MONTHLY_RATIOS
 
     except RuntimeError as e:

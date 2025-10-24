@@ -117,7 +117,7 @@ class XLSXGenerator(OutputGenerator):
         roi_writer = ROISectionWriter(
             worksheet, formatter, row, config.hours_per_vuln, config.hourly_rate
         )
-        backlog_cost_cell, yearly_cost_cell, row = roi_writer.write(alternative_analyses)
+        backlog_cost_cell, yearly_cost_cell, row = roi_writer.write(successful)
 
         # CHPS section if any images have CHPS scores
         if any(a.chps_score for a in alternative_analyses + chainguard_analyses):
