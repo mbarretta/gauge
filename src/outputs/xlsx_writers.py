@@ -6,10 +6,12 @@ cost analysis report, following single-responsibility principle.
 """
 
 import xlsxwriter
+from typing import Optional
+
 from xlsxwriter.utility import xl_rowcol_to_cell
 
 from constants import DEFAULT_PLATFORM
-from core.models import ImageAnalysis, ScanResult
+from core.models import ImageAnalysis, ScanResult, CHPSScore
 from outputs.xlsx_formats import OutputFormatter
 from utils.cve_ratios import get_cve_monthly_ratios
 from utils.fips_calculator import FIPSCalculator
@@ -92,6 +94,9 @@ class ImageComparisonWriter(BaseSectionWriter):
 
         # Chainguard images
         chainguard_cells = self._write_image_data(chainguard_analyses, "body_green")
+
+        # Roll-up metrics section
+        self._write_rollup_section(alternative_cells, chainguard_cells, len(alternative_analyses))
 
         return alternative_cells, chainguard_cells, self.row
 
@@ -176,6 +181,122 @@ class ImageComparisonWriter(BaseSectionWriter):
         }
 
         return {"start": start_cells, "end": end_cells}
+
+    def _write_rollup_section(self, alt_cells: dict, cgr_cells: dict, num_images: int):
+        """
+        Write roll-up metrics section with summary statistics.
+
+        Args:
+            alt_cells: Cell references for alternative images
+            cgr_cells: Cell references for Chainguard images
+            num_images: Number of images in the comparison
+        """
+        # Define metrics that will be summarized
+        all_metrics = ["size", "packages", "cves", "critical", "high", "medium", "low", "negligible"]
+        reduction_metrics = ["size", "packages", "cves"]
+        num_columns = len(all_metrics) + 1  # +1 for label column
+
+        self.row += 1
+
+        # Section header
+        self.worksheet.merge_range(
+            self.row,
+            self.col,
+            self.row,
+            self.col + num_columns - 1,
+            "Roll-up metrics",
+            self.formatter.get("header_lightgrey")
+        )
+        self.row += 1
+
+        # Column headers
+        header = [
+            f"Images (set of {num_images} images)",
+            "Total Size (MB)",
+            "Total Packages",
+            "Total CVEs",
+            "Critical",
+            "High",
+            "Medium",
+            "Low",
+            "Negligible/Unknown",
+        ]
+        self.worksheet.write_row(
+            self.row, self.col, header, self.formatter.get("header_blue")
+        )
+        self.row += 1
+
+        # Row 1: Alternative images summary
+        alt_total_cells = self._write_summary_row(
+            f"Current set of {num_images} images used",
+            alt_cells,
+            all_metrics,
+            "body_white"
+        )
+
+        # Row 2: Chainguard images summary
+        cgr_total_cells = self._write_summary_row(
+            "Chainguard equivalent set of images",
+            cgr_cells,
+            all_metrics,
+            "body_green"
+        )
+
+        # Row 3: Reduction percentage
+        self._write_reduction_row(alt_total_cells, cgr_total_cells, reduction_metrics)
+
+    def _write_summary_row(
+        self, label: str, cells: dict, metrics: list[str], format_key: str
+    ) -> dict[str, str]:
+        """
+        Write a summary row with SUM formulas for each metric.
+
+        Args:
+            label: Row label text
+            cells: Cell references with 'start' and 'end' keys
+            metrics: List of metric names to sum
+            format_key: Format name to use
+
+        Returns:
+            Dictionary mapping metric names to their total cell references
+        """
+        self.worksheet.write(self.row, self.col, label, self.formatter.get(format_key))
+
+        total_cells = {}
+        for i, metric in enumerate(metrics):
+            formula = f"=SUM({cells['start'][metric]}:{cells['end'][metric]})"
+            self.worksheet.write_formula(
+                self.row, self.col + i + 1, formula, self.formatter.get(format_key)
+            )
+            total_cells[metric] = xl_rowcol_to_cell(self.row, self.col + i + 1)
+
+        self.row += 1
+        return total_cells
+
+    def _write_reduction_row(
+        self, alt_cells: dict[str, str], cgr_cells: dict[str, str], metrics: list[str]
+    ):
+        """
+        Write reduction percentage row comparing alternative vs Chainguard.
+
+        Args:
+            alt_cells: Cell references for alternative image totals
+            cgr_cells: Cell references for Chainguard image totals
+            metrics: List of metric names to calculate reduction for
+        """
+        self.worksheet.write(
+            self.row, self.col, "Reduction %", self.formatter.get("body_white")
+        )
+
+        for i, metric in enumerate(metrics):
+            alt_cell = alt_cells[metric]
+            cgr_cell = cgr_cells[metric]
+            formula = f'=CONCATENATE(ROUND((({cgr_cell} - {alt_cell}) / {alt_cell}) * 100, 2), "%")'
+            self.worksheet.write_formula(
+                self.row, self.col + i + 1, formula, self.formatter.get("body_white")
+            )
+
+        self.row += 1
 
 
 class ROISectionWriter(BaseSectionWriter):
@@ -561,21 +682,23 @@ class CHPSSectionWriter(BaseSectionWriter):
         self.worksheet.write(
             self.row,
             self.col,
-            "CHPS (Container Hardening and Provenance Scanner) evaluates non-CVE security factors",
+            "CHPS evaluates hardening best practices; CVE scoring has been omitted.",
             self.formatter.get("body_white"),
         )
         self.row += 1
 
         # Column headers
-        self.worksheet.write(self.row, self.col, "Image", self.formatter.get("header_lightgrey"))
-        self.worksheet.write(
-            self.row, self.col + 1, "CHPS Score", self.formatter.get("header_lightgrey")
-        )
-        self.worksheet.write(
-            self.row, self.col + 2, "Grade", self.formatter.get("header_lightgrey")
-        )
-        self.worksheet.write(
-            self.row, self.col + 3, "Improvement", self.formatter.get("header_lightgrey")
+        headers = [
+            "Image",
+            "Minimalism",
+            "Provenance",
+            "Configuration",
+            "Overall Score (max 16)",
+            "Overall Grade",
+            "Overall Improvement"
+        ]
+        self.worksheet.write_row(
+            self.row, self.col, headers, self.formatter.get("header_lightgrey")
         )
         self.row += 1
 
@@ -585,12 +708,30 @@ class CHPSSectionWriter(BaseSectionWriter):
             alternative_score = alternative.chps_score.score if alternative.chps_score else 0
             alternative_grade = alternative.chps_score.grade if alternative.chps_score else "N/A"
 
+            # Get component scores for alternative (as "X of Y" format)
+            alt_min = self._get_component_score(alternative.chps_score, "minimalism")
+            alt_prov = self._get_component_score(alternative.chps_score, "provenance")
+            alt_conf = self._get_component_score(alternative.chps_score, "configuration")
+
             self.worksheet.write(self.row, self.col, alternative.name, self.formatter.get("body_white"))
             self.worksheet.write(
-                self.row, self.col + 1, alternative_score, self.formatter.get("body_white")
+                self.row, self.col + 1, alt_min, self.formatter.get("body_white")
             )
             self.worksheet.write(
-                self.row, self.col + 2, alternative_grade, self.formatter.get("body_white")
+                self.row, self.col + 2, alt_prov, self.formatter.get("body_white")
+            )
+            self.worksheet.write(
+                self.row, self.col + 3, alt_conf, self.formatter.get("body_white")
+            )
+            self.worksheet.write(
+                self.row, self.col + 4, alternative_score, self.formatter.get("body_white")
+            )
+            self.worksheet.write(
+                self.row, self.col + 5, alternative_grade, self.formatter.get("body_white")
+            )
+            # Write empty cell for improvement column to maintain border
+            self.worksheet.write(
+                self.row, self.col + 6, "", self.formatter.get("body_white")
             )
             self.row += 1
 
@@ -599,31 +740,85 @@ class CHPSSectionWriter(BaseSectionWriter):
             chainguard_grade = chainguard.chps_score.grade if chainguard.chps_score else "N/A"
             improvement = chainguard_score - alternative_score if alternative.chps_score and chainguard.chps_score else 0
 
+            # Get component scores for chainguard (as "X of Y" format)
+            cgr_min = self._get_component_score(chainguard.chps_score, "minimalism")
+            cgr_prov = self._get_component_score(chainguard.chps_score, "provenance")
+            cgr_conf = self._get_component_score(chainguard.chps_score, "configuration")
+
             self.worksheet.write(
                 self.row, self.col, f"{chainguard.name} (Chainguard)", self.formatter.get("body_green")
             )
             self.worksheet.write(
-                self.row, self.col + 1, chainguard_score, self.formatter.get("body_green")
+                self.row, self.col + 1, cgr_min, self.formatter.get("body_green")
             )
             self.worksheet.write(
-                self.row, self.col + 2, chainguard_grade, self.formatter.get("body_green")
+                self.row, self.col + 2, cgr_prov, self.formatter.get("body_green")
+            )
+            self.worksheet.write(
+                self.row, self.col + 3, cgr_conf, self.formatter.get("body_green")
+            )
+            self.worksheet.write(
+                self.row, self.col + 4, chainguard_score, self.formatter.get("body_green")
+            )
+            self.worksheet.write(
+                self.row, self.col + 5, chainguard_grade, self.formatter.get("body_green")
             )
             if improvement != 0:
                 self.worksheet.write(
-                    self.row, self.col + 3, improvement, self.formatter.get("body_green")
+                    self.row, self.col + 6, improvement, self.formatter.get("body_green")
                 )
             self.row += 1
 
-        # Summary note
-        self.row += 1
-        self.worksheet.write(
-            self.row,
-            self.col,
-            "Note: CHPS scores evaluate provenance, SBOM quality, signing, and hardening practices (not CVEs)",
-            self.formatter.get("body_white"),
-        )
-
         return self.row
+
+    def _get_component_score(self, chps_score: Optional["CHPSScore"], component: str) -> str:
+        """
+        Extract component score from CHPS score details in "X of Y" format.
+
+        Args:
+            chps_score: CHPS score object
+            component: Component name (minimalism, provenance, configuration)
+
+        Returns:
+            Component score as "X of Y" format or "N/A" if not available
+        """
+        if not chps_score or not chps_score.details:
+            return "N/A"
+
+        scores = chps_score.details.get("scores", {})
+        component_data = scores.get(component, {})
+
+        score = component_data.get("score", 0)
+        max_score = component_data.get("max", 0)
+
+        if max_score == 0:
+            return "N/A"
+
+        return f"{score} of {max_score}"
+
+    def _get_component_grade(self, chps_score: Optional["CHPSScore"], component: str) -> str:
+        """
+        Extract component grade from CHPS score details.
+
+        Args:
+            chps_score: CHPS score object
+            component: Component name (minimalism, provenance, configuration)
+
+        Returns:
+            Component grade or "N/A" if not available
+        """
+        if not chps_score or not chps_score.details:
+            return "N/A"
+
+        scores = chps_score.details.get("scores", {})
+        component_data = scores.get(component, {})
+        grade = component_data.get("grade", "N/A")
+
+        # Fix E→F mapping
+        if grade == "E":
+            grade = "F"
+
+        return grade
 
 
 class FIPSSectionWriter(BaseSectionWriter):

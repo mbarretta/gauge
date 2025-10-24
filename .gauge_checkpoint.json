@@ -1,0 +1,840 @@
+{
+  "version": "2.0",
+  "timestamp": "2025-10-24T13:44:01.187909",
+  "metadata": {
+    "pairs_count": 5,
+    "platform": "linux/amd64"
+  },
+  "results": [
+    {
+      "pair": {
+        "chainguard_image": "cgr.dev/chainguard-private/postgres:latest",
+        "alternative_image": "postgres:16"
+      },
+      "scan_successful": true,
+      "error_message": "",
+      "alternative_analysis": {
+        "name": "postgres:16",
+        "size_mb": 430,
+        "package_count": 146,
+        "vulnerabilities": {
+          "total": 98,
+          "critical": 0,
+          "high": 1,
+          "medium": 4,
+          "low": 8,
+          "negligible": 85
+        },
+        "scan_timestamp": "2025-10-24T17:17:39.509981+00:00",
+        "digest": "sha256:9b3d8ce33ae76b9325695049270e645268e22b6f6b5eb3f9207f65dbbda307cd",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 10,
+          "grade": "B",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/minimalism-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "fail",
+                  "package_manager": "fail"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/configuration-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "fail",
+                  "root_user": "fail",
+                  "file_mounts": "skip",
+                  "annotations": "fail",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "postgres:16",
+            "digest": "sha256:9b3d8ce33ae76b9325695049270e645268e22b6f6b5eb3f9207f65dbbda307cd",
+            "original_score": 10,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 62.5
+          }
+        }
+      },
+      "chainguard_analysis": {
+        "name": "cgr.dev/chainguard-private/postgres:latest",
+        "size_mb": 390,
+        "package_count": 64,
+        "vulnerabilities": {
+          "total": 0,
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "negligible": 0
+        },
+        "scan_timestamp": "2025-10-24T17:18:14.018310+00:00",
+        "digest": "sha256:d00d5063297fc9224f68c270210d5c8870ce2bae6f70b67fbc3a731dbcb21c7f",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 14,
+          "grade": "A",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 2,
+                "max": 4,
+                "grade": "B",
+                "badge": "https://img.shields.io/badge/minimalism-B-gold?style=flat-square&labelColor=%233443F4&color=%23FFB000",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "fail",
+                  "package_manager": "pass"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 4,
+                "max": 4,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/configuration-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "pass",
+                  "root_user": "pass",
+                  "file_mounts": "skip",
+                  "annotations": "pass",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "cgr.dev/chainguard-private/postgres:latest",
+            "digest": "sha256:d00d5063297fc9224f68c270210d5c8870ce2bae6f70b67fbc3a731dbcb21c7f",
+            "original_score": 14,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 87.5
+          }
+        }
+      }
+    },
+    {
+      "pair": {
+        "chainguard_image": "cgr.dev/chainguard-private/nginx:latest",
+        "alternative_image": "nginx:1.25"
+      },
+      "scan_successful": true,
+      "error_message": "",
+      "alternative_analysis": {
+        "name": "nginx:1.25",
+        "size_mb": 179,
+        "package_count": 150,
+        "vulnerabilities": {
+          "total": 268,
+          "critical": 15,
+          "high": 59,
+          "medium": 79,
+          "low": 19,
+          "negligible": 96
+        },
+        "scan_timestamp": "2025-10-24T17:17:29.036989+00:00",
+        "digest": "sha256:e784f4560448b14a66f55c26e1b4dad2c2877cc73d001b7cd0b18e24a700a070",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 10,
+          "grade": "B",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/minimalism-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "fail",
+                  "package_manager": "fail"
+                }
+              },
+              "provenance": {
+                "score": 7,
+                "max": 8,
+                "grade": "A",
+                "badge": "https://img.shields.io/badge/provenance-A-gold?style=flat-square&labelColor=%233443F4&color=%2304B45F",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "fail",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 2,
+                "max": 4,
+                "grade": "B",
+                "badge": "https://img.shields.io/badge/configuration-B-gold?style=flat-square&labelColor=%233443F4&color=%23FFB000",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "fail",
+                  "root_user": "fail",
+                  "file_mounts": "skip",
+                  "annotations": "pass",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "nginx:1.25",
+            "digest": "sha256:e784f4560448b14a66f55c26e1b4dad2c2877cc73d001b7cd0b18e24a700a070",
+            "original_score": 10,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 62.5
+          }
+        }
+      },
+      "chainguard_analysis": {
+        "name": "cgr.dev/chainguard-private/nginx:latest",
+        "size_mb": 16,
+        "package_count": 16,
+        "vulnerabilities": {
+          "total": 0,
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "negligible": 0
+        },
+        "scan_timestamp": "2025-10-24T17:17:49.225499+00:00",
+        "digest": "sha256:cb30e8e44d81b4945b810ad21ae56889f9ee9bc7113e6841620ce1ba9bf194f7",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 15,
+          "grade": "A",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 3,
+                "max": 4,
+                "grade": "A",
+                "badge": "https://img.shields.io/badge/minimalism-A-gold?style=flat-square&labelColor=%233443F4&color=%2304B45F",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "pass",
+                  "package_manager": "pass"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 4,
+                "max": 4,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/configuration-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "pass",
+                  "root_user": "pass",
+                  "file_mounts": "skip",
+                  "annotations": "pass",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "cgr.dev/chainguard-private/nginx:latest",
+            "digest": "sha256:cb30e8e44d81b4945b810ad21ae56889f9ee9bc7113e6841620ce1ba9bf194f7",
+            "original_score": 15,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 93.75
+          }
+        }
+      }
+    },
+    {
+      "pair": {
+        "chainguard_image": "cgr.dev/chainguard-private/python-fips:latest",
+        "alternative_image": "python:3.12"
+      },
+      "scan_successful": true,
+      "error_message": "",
+      "alternative_analysis": {
+        "name": "python:3.12",
+        "size_mb": 1056,
+        "package_count": 479,
+        "vulnerabilities": {
+          "total": 714,
+          "critical": 0,
+          "high": 16,
+          "medium": 59,
+          "low": 28,
+          "negligible": 611
+        },
+        "scan_timestamp": "2025-10-24T17:17:58.668558+00:00",
+        "digest": "sha256:d852c0dcc6f2a3022a0b05f8ee866b12c21b28bc5c9ce6ef40c29f57824a99ab",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 9,
+          "grade": "B",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 0,
+                "max": 4,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/minimalism-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "fail",
+                  "shell": "fail",
+                  "package_manager": "fail"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/configuration-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "fail",
+                  "root_user": "fail",
+                  "file_mounts": "skip",
+                  "annotations": "fail",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "python:3.12",
+            "digest": "sha256:d852c0dcc6f2a3022a0b05f8ee866b12c21b28bc5c9ce6ef40c29f57824a99ab",
+            "original_score": 9,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 56.25
+          }
+        }
+      },
+      "chainguard_analysis": {
+        "name": "cgr.dev/chainguard-private/python-fips:latest",
+        "size_mb": 61,
+        "package_count": 29,
+        "vulnerabilities": {
+          "total": 0,
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "negligible": 0
+        },
+        "scan_timestamp": "2025-10-24T17:37:35.842468+00:00",
+        "digest": "sha256:a31044f4608b123d2ba9f5dd028dda6e1f15cdb2d1aae816bb4833a3c3898d68",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 15,
+          "grade": "A",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 3,
+                "max": 4,
+                "grade": "A",
+                "badge": "https://img.shields.io/badge/minimalism-A-gold?style=flat-square&labelColor=%233443F4&color=%2304B45F",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "pass",
+                  "package_manager": "pass"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 4,
+                "max": 4,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/configuration-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "pass",
+                  "root_user": "pass",
+                  "file_mounts": "skip",
+                  "annotations": "pass",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "cgr.dev/chainguard-private/python-fips:latest",
+            "digest": "sha256:a31044f4608b123d2ba9f5dd028dda6e1f15cdb2d1aae816bb4833a3c3898d68",
+            "original_score": 15,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 93.75
+          }
+        }
+      }
+    },
+    {
+      "pair": {
+        "chainguard_image": "cgr.dev/chainguard-private/node:latest",
+        "alternative_image": "node:20"
+      },
+      "scan_successful": true,
+      "error_message": "",
+      "alternative_analysis": {
+        "name": "node:20",
+        "size_mb": 1045,
+        "package_count": 619,
+        "vulnerabilities": {
+          "total": 835,
+          "critical": 6,
+          "high": 37,
+          "medium": 83,
+          "low": 50,
+          "negligible": 659
+        },
+        "scan_timestamp": "2025-10-24T17:18:00.284584+00:00",
+        "digest": "sha256:2e18b4029520d732d7fb248c37780c6cdcde38a3627e501ea932c79f67658bb8",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 9,
+          "grade": "B",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 0,
+                "max": 4,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/minimalism-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "fail",
+                  "shell": "fail",
+                  "package_manager": "fail"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/configuration-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "fail",
+                  "root_user": "fail",
+                  "file_mounts": "skip",
+                  "annotations": "fail",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "node:20",
+            "digest": "sha256:2e18b4029520d732d7fb248c37780c6cdcde38a3627e501ea932c79f67658bb8",
+            "original_score": 9,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 56.25
+          }
+        }
+      },
+      "chainguard_analysis": {
+        "name": "cgr.dev/chainguard-private/node:latest",
+        "size_mb": 155,
+        "package_count": 239,
+        "vulnerabilities": {
+          "total": 0,
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 0,
+          "negligible": 0
+        },
+        "scan_timestamp": "2025-10-24T17:18:32.425647+00:00",
+        "digest": "sha256:2edbfeafbc583fcf74e036a3e13986bce59238f628969b26539289826576cf39",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 12,
+          "grade": "A",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 0,
+                "max": 4,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/minimalism-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "fail",
+                  "shell": "fail",
+                  "package_manager": "fail"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 4,
+                "max": 4,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/configuration-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "pass",
+                  "root_user": "pass",
+                  "file_mounts": "skip",
+                  "annotations": "pass",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "cgr.dev/chainguard-private/node:latest",
+            "digest": "sha256:2edbfeafbc583fcf74e036a3e13986bce59238f628969b26539289826576cf39",
+            "original_score": 12,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 75.0
+          }
+        }
+      }
+    },
+    {
+      "pair": {
+        "chainguard_image": "cgr.dev/chainguard-private/redis:latest",
+        "alternative_image": "redis:7"
+      },
+      "scan_successful": true,
+      "error_message": "",
+      "alternative_analysis": {
+        "name": "redis:7",
+        "size_mb": 112,
+        "package_count": 94,
+        "vulnerabilities": {
+          "total": 136,
+          "critical": 8,
+          "high": 37,
+          "medium": 35,
+          "low": 9,
+          "negligible": 47
+        },
+        "scan_timestamp": "2025-10-24T17:18:13.396527+00:00",
+        "digest": "sha256:b4e53bb4637c329c42395eec0b86851f5314f6ed597ec217b5e4e19f7c102c11",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 10,
+          "grade": "B",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/minimalism-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "fail",
+                  "package_manager": "fail"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 1,
+                "max": 4,
+                "grade": "D",
+                "badge": "https://img.shields.io/badge/configuration-D-gold?style=flat-square&labelColor=%233443F4&color=%23FF4400",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "fail",
+                  "root_user": "fail",
+                  "file_mounts": "skip",
+                  "annotations": "fail",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "redis:7",
+            "digest": "sha256:b4e53bb4637c329c42395eec0b86851f5314f6ed597ec217b5e4e19f7c102c11",
+            "original_score": 10,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 62.5
+          }
+        }
+      },
+      "chainguard_analysis": {
+        "name": "cgr.dev/chainguard-private/redis:latest",
+        "size_mb": 50,
+        "package_count": 19,
+        "vulnerabilities": {
+          "total": 1,
+          "critical": 0,
+          "high": 0,
+          "medium": 0,
+          "low": 1,
+          "negligible": 0
+        },
+        "scan_timestamp": "2025-10-24T17:18:37.942549+00:00",
+        "digest": "sha256:9bada0033cd409b0e3e1d36757434de414b0e880bd4d4b4fcee203d949df6349",
+        "cache_hit": true,
+        "chps_score": {
+          "score": 14,
+          "grade": "A",
+          "details": {
+            "scores": {
+              "minimalism": {
+                "score": 2,
+                "max": 4,
+                "grade": "B",
+                "badge": "https://img.shields.io/badge/minimalism-B-gold?style=flat-square&labelColor=%233443F4&color=%23FFB000",
+                "checks": {
+                  "minimal_base": "fail",
+                  "build_tooling": "pass",
+                  "shell": "fail",
+                  "package_manager": "pass"
+                }
+              },
+              "provenance": {
+                "score": 8,
+                "max": 8,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/provenance-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "trusted_source": "pass",
+                  "download_verification": "pass",
+                  "image_signed": "pass",
+                  "recent_build": "pass",
+                  "pinned_images": "pass",
+                  "pinned_packages": "pass",
+                  "attestations": "pass",
+                  "sbom": "pass"
+                }
+              },
+              "configuration": {
+                "score": 4,
+                "max": 4,
+                "grade": "A+",
+                "badge": "https://img.shields.io/badge/configuration-A%2B-gold?style=flat-square&labelColor=%233443F4&color=%2301A178",
+                "checks": {
+                  "secrets": "pass",
+                  "elevated_privileges": "pass",
+                  "root_user": "pass",
+                  "file_mounts": "skip",
+                  "annotations": "pass",
+                  "security_profiles": "skip"
+                }
+              },
+              "cves": {
+                "score": 0,
+                "max": 5,
+                "grade": "E",
+                "badge": "https://img.shields.io/badge/cves-E-gold?style=flat-square&labelColor=%233443F4&color=%23FF0000",
+                "checks": {}
+              }
+            },
+            "image": "cgr.dev/chainguard-private/redis:latest",
+            "digest": "sha256:9bada0033cd409b0e3e1d36757434de414b0e880bd4d4b4fcee203d949df6349",
+            "original_score": 14,
+            "original_max": 20,
+            "adjusted_max": 16,
+            "adjusted_percentage": 87.5
+          }
+        }
+      }
+    }
+  ]
+}

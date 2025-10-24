@@ -119,17 +119,12 @@ class XLSXGenerator(OutputGenerator):
         )
         backlog_cost_cell, yearly_cost_cell, row = roi_writer.write(successful)
 
-        # CHPS section if any images have CHPS scores
-        if any(a.chps_score for a in alternative_analyses + chainguard_analyses):
-            chps_writer = CHPSSectionWriter(worksheet, formatter, row)
-            row = chps_writer.write(alternative_analyses, chainguard_analyses)
-
         # FIPS sections
         fips_initial_cost_cell = None
         fips_yearly_cost_cell = None
         if fips_count and fips_count > 0:
             fips_writer = FIPSSectionWriter(
-                worksheet, formatter, row, hourly_rate, roi_writer.hourly_rate_cell
+                worksheet, formatter, row, config.hourly_rate, roi_writer.hourly_rate_cell
             )
             fips_initial_cost_cell, fips_yearly_cost_cell, row = fips_writer.write(fips_count)
 
@@ -145,6 +140,11 @@ class XLSXGenerator(OutputGenerator):
             fips_initial_cost_cell,
             fips_yearly_cost_cell,
         )
+
+        # CHPS section if any images have CHPS scores (after final totals)
+        if any(a.chps_score for a in alternative_analyses + chainguard_analyses):
+            chps_writer = CHPSSectionWriter(worksheet, formatter, row)
+            row = chps_writer.write(alternative_analyses, chainguard_analyses)
 
         # Finalize
         worksheet.autofit()

@@ -154,7 +154,7 @@ Add FIPS implementation cost calculations (XLSX only):
 ```bash
 gauge --output cost_analysis \
       --output-file-name cost-analysis \
-      --auto-detect-fips
+      --with-fips
 ```
 
 This will auto-detect FIPS images from their names and create `cost-analysis.xlsx` with FIPS cost analysis included.
@@ -232,7 +232,7 @@ Optional header row is automatically skipped.
 |--------|---------|-------------|
 | `--hours-per-vuln` | 3.0 | Average hours to remediate one CVE |
 | `--hourly-rate` | 100.0 | Engineering hourly rate in USD |
-| `--auto-detect-fips` | - | Auto-detect FIPS images from names |
+| `--with-fips` | - | Include FIPS cost analysis (auto-detects FIPS images) |
 
 ### CHPS Integration
 
@@ -334,7 +334,7 @@ gauge --source production-images.csv \
       --customer "Acme Corp" \
       --hours-per-vuln 4 \
       --hourly-rate 125 \
-      --auto-detect-fips \
+      --with-fips \
       --max-workers 8
 ```
 

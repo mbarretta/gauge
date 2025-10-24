@@ -146,7 +146,7 @@ nginx:1.25,cgr.dev/chainguard-private/nginx:latest
 | `--vulnhours` | `--hours-per-vuln` | More descriptive name |
 | `--hourlyrate` | `--hourly-rate` | Hyphenated for consistency |
 | `--fips` | `--fips-count` | More explicit |
-| - | `--auto-detect-fips` | New feature! |
+| - | `--with-fips` | New feature! |
 
 ## Feature Parity
 
@@ -171,7 +171,7 @@ nginx:1.25,cgr.dev/chainguard-private/nginx:latest
 
 🎉 **Auto-detect FIPS images**
 ```bash
---auto-detect-fips  # Automatically detects FIPS images from names
+--with-fips  # Automatically detects FIPS images from names and includes cost analysis
 ```
 
 🎉 **Better cache management**
