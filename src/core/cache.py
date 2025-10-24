@@ -68,16 +68,23 @@ class ScanCache:
         safe_key = cache_key.replace("/", "_").replace(":", "_").replace("#", "_")
         return self.cache_dir / f"{safe_key}.json"
 
-    def get(self, image_name: str, digest: Optional[str]) -> Optional[ImageAnalysis]:
+    def get(
+        self,
+        image_name: str,
+        digest: Optional[str],
+        require_chps: bool = False
+    ) -> Optional[ImageAnalysis]:
         """
         Retrieve cached scan result.
 
         Args:
             image_name: Image reference
             digest: Image digest (sha256)
+            require_chps: If True, only return cached results that have CHPS scores.
+                         If False, return cached results regardless of CHPS presence.
 
         Returns:
-            Cached ImageAnalysis if available, None otherwise
+            Cached ImageAnalysis if available and matches CHPS requirement, None otherwise
         """
         if not self.enabled or not digest:
             self.misses += 1
@@ -97,6 +104,17 @@ class ScanCache:
             # Validate digest matches
             if data.get("digest") != digest:
                 logger.warning(f"Cache digest mismatch for {image_name}")
+                self.misses += 1
+                return None
+
+            # Validate CHPS requirement matches
+            # If CHPS is required but cached result doesn't have it, we need to re-scan
+            # If CHPS is not required, we can use cached results regardless of whether they have CHPS
+            has_chps = data.get("chps_score") is not None
+            if require_chps and not has_chps:
+                logger.debug(
+                    f"Cache miss for {image_name}: CHPS score required but cached result has none"
+                )
                 self.misses += 1
                 return None
 

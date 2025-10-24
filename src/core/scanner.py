@@ -108,8 +108,9 @@ class VulnerabilityScanner:
         # Get image digest for caching
         digest = self.docker.get_image_digest(image)
 
-        # Check cache
-        cached = self.cache.get(image, digest)
+        # Check cache (with CHPS requirement if CHPS scanner is enabled)
+        require_chps = self.chps_scanner is not None
+        cached = self.cache.get(image, digest, require_chps=require_chps)
         if cached:
             logger.info(f"✓ {image} (cached)")
             return cached

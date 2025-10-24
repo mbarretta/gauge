@@ -67,7 +67,7 @@ Examples:
         --customer "Acme Corp" --exec-summary summary.md
 
   # Include FIPS cost analysis (cost_analysis only)
-  gauge --output cost_analysis --auto-detect-fips
+  gauge --output cost_analysis --with-fips
         """,
     )
 
@@ -150,9 +150,9 @@ Examples:
         help=f"Engineering hourly rate in USD (default: {DEFAULT_HOURLY_RATE})",
     )
     xlsx_opts.add_argument(
-        "--auto-detect-fips",
+        "--with-fips",
         action="store_true",
-        help="Auto-detect FIPS images from names",
+        help="Include FIPS cost analysis (auto-detects FIPS images by name)",
     )
 
     # Cache options
@@ -439,7 +439,7 @@ def main():
             platform=args.platform,
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
-            auto_detect_fips=args.auto_detect_fips,
+            auto_detect_fips=args.with_fips,
         )
         xlsx_generator.generate(
             results=results,
@@ -460,7 +460,7 @@ def main():
             platform=args.platform,
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
-            auto_detect_fips=args.auto_detect_fips,
+            auto_detect_fips=args.with_fips,
         )
         generator.generate(
             results=results,
