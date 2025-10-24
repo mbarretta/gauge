@@ -597,10 +597,6 @@ The unified tool maintains 100% feature parity with both while adding:
 
 Copyright © 2025 Chainguard. All Rights Reserved.
 
-## Support
-
-For issues, questions, or contributions, please contact your Chainguard representative.
-
 ---
 
 **Built with [Claude Code](https://claude.com/claude-code)**
