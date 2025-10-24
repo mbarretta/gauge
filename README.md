@@ -28,7 +28,7 @@
 </td>
 <td width="60%" valign="middle" align="center">
 
-<img src="resources/gauge-logo-white.png" width="400" alt="Gauge Logo">
+<img src="resources/gauge-logo-white.png" width="600" alt="Gauge Logo">
 
 </td>
 </tr>
