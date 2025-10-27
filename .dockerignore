@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Distribution
+build/
+dist/
+*.egg-info/
+
+# Cache
+.cache/
+*.cache
+.gauge_checkpoint.json
+
+# Output files
+*.html
+*.xlsx
+*.pdf
+
+# Logs
+*.log
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# Development
+tests/
+Makefile
+setup.py
+pyproject.toml

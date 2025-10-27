@@ -66,6 +66,9 @@ coverage.xml
 # Gauge checkpoint files
 .gauge_checkpoint.json
 
+# Chainguard token file
+chainguard-token
+
 # Output files
 *.html
 *.xlsx

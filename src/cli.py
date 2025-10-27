@@ -55,15 +55,15 @@ Examples:
   gauge
 
   # Generate vulnerability cost analysis (XLSX)
-  gauge --output cost_analysis --output-file-name analysis \\
+  gauge --output cost_analysis --output-dir ./reports \\
         --customer "Acme Corp" --hours-per-vuln 3 --hourly-rate 100
 
   # Generate vulnerability assessment summary (HTML)
-  gauge --output vuln_summary --output-file-name assessment \\
+  gauge --output vuln_summary --output-dir ./reports \\
         --customer "Acme Corp" --exec-summary summary.md
 
   # Generate both outputs
-  gauge --output both --output-file-name report \\
+  gauge --output both --output-dir ./reports \\
         --customer "Acme Corp" --exec-summary summary.md
 
   # Include FIPS cost analysis (cost_analysis only)
@@ -88,10 +88,10 @@ Examples:
         help="Output type: 'cost_analysis' (XLSX), 'vuln_summary' (HTML), or 'both' (default: both)",
     )
     io_group.add_argument(
-        "--output-file-name",
-        type=str,
-        default="gauge_output",
-        help="Base filename for output files (default: gauge_output)",
+        "--output-dir",
+        type=Path,
+        default=Path("."),
+        help="Output directory for generated reports (default: current directory)",
     )
 
     # Common options
@@ -281,7 +281,11 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
                     sys.exit(1)
 
     except FileNotFoundError:
-        logger.error(f"Source file not found: {csv_path}")
+        if csv_path == Path("images.csv"):
+            logger.error(f"The default 'images.csv' was not found in the current directory.")
+            logger.error(f"Run again using '--source <your-csv-file>' to specify your input file.")
+        else:
+            logger.error(f"Source file not found: {csv_path}")
         sys.exit(1)
     except Exception as e:
         logger.error(f"Error reading source file: {e}")
@@ -335,11 +339,16 @@ def main():
         logger.info("Clearing cache...")
         cache.clear()
 
-    # Pre-authenticate to cgr.dev/chainguard-private before parallel operations
-    # This prevents each thread from spawning separate authentication requests
+    # Validate Chainguard authentication before proceeding
+    # This prevents failures during parallel image pulling
     if not docker_client.ensure_chainguard_auth():
-        logger.error("Failed to authenticate to cgr.dev/chainguard-private")
-        logger.error("Please ensure chainctl is installed and you have access to chainguard-private")
+        logger.error("Failed to authenticate to Chainguard registry")
+        logger.error("")
+        logger.error("Please run these commands:")
+        logger.error("  chainctl auth login")
+        logger.error("  chainctl auth configure-docker")
+        logger.error("")
+        logger.error("This sets up Docker authentication which works for both local and container execution.")
         sys.exit(1)
 
     # Initialize scanner
@@ -409,12 +418,27 @@ def main():
     logger.info(cache.summary())
 
     # Generate report(s) based on output type
+    # Create output directory if it doesn't exist
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use customer name for output filenames (sanitize for filesystem safety)
+    # Convert to lowercase, replace spaces with underscores, remove special chars
+    # Collapse consecutive underscores to single underscore
+    import re
+    # First, remove & and . characters entirely (don't replace with underscore)
+    safe_customer_name = args.customer_name.replace('&', '').replace('.', '')
+    # Then replace other special characters with underscores, keep alphanumeric, spaces, hyphens, underscores
+    safe_customer_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in safe_customer_name)
+    safe_customer_name = safe_customer_name.replace(' ', '_').lower()
+    # Collapse multiple consecutive underscores into one
+    safe_customer_name = re.sub(r'_+', '_', safe_customer_name)
+
     if output_format == "both":
         # Generate both outputs with appropriate extensions
         from outputs.config import HTMLGeneratorConfig, XLSXGeneratorConfig
 
-        html_path = Path(f"{args.output_file_name}.html")
-        xlsx_path = Path(f"{args.output_file_name}.xlsx")
+        html_path = args.output_dir / f"{safe_customer_name}.html"
+        xlsx_path = args.output_dir / f"{safe_customer_name}.xlsx"
 
         # Generate HTML assessment summary
         html_generator = HTMLGenerator()
@@ -453,7 +477,7 @@ def main():
         # Generate XLSX cost analysis
         from outputs.config import XLSXGeneratorConfig
 
-        xlsx_path = Path(f"{args.output_file_name}.xlsx")
+        xlsx_path = args.output_dir / f"{safe_customer_name}.xlsx"
         generator = XLSXGenerator()
         xlsx_config = XLSXGeneratorConfig(
             customer_name=args.customer_name,
@@ -473,7 +497,7 @@ def main():
         # Generate HTML assessment summary
         from outputs.config import HTMLGeneratorConfig
 
-        html_path = Path(f"{args.output_file_name}.html")
+        html_path = args.output_dir / f"{safe_customer_name}.html"
         generator = HTMLGenerator()
         exec_summary = args.exec_summary if args.exec_summary.exists() else None
         appendix = args.appendix if args.appendix.exists() else None

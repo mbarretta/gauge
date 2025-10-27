@@ -84,6 +84,35 @@
 
 ## Installation
 
+### Option 1: Container (Recommended)
+
+Run Gauge in a container built with Chainguard Images:
+
+```bash
+# Build the container
+docker build -t gauge:latest .
+
+# Authenticate to Chainguard registry (required for accessing Chainguard images)
+chainctl auth login
+chainctl auth configure-docker
+
+# Run with your images CSV
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  gauge:latest \
+  --source /workspace/images.csv \
+  --output both \
+  --output-dir /workspace \
+  --customer "Customer Name"
+```
+
+**Important requirements**:
+- **Docker socket mount** (`-v /var/run/docker.sock:/var/run/docker.sock`): Required for pulling and scanning images, and CHPS scoring
+- **Pre-authentication**: Run `chainctl auth login` and `chainctl auth configure-docker` on your host. This sets up Docker authentication via credential helper, which the container will use through the mounted Docker socket.
+
+### Option 2: Local Installation
+
 ```bash
 # Clone the repository
 cd gauge
@@ -117,11 +146,11 @@ Generate a comprehensive cost analysis with ROI calculations:
 
 ```bash
 gauge --output cost_analysis \
-      --output-file-name cost-analysis \
+      --output-dir ./reports \
       --customer "Acme Corp"
 ```
 
-This will create `cost-analysis.xlsx`.
+This generates `./reports/acme_corp.xlsx`.
 
 ### Generate Vulnerability Assessment Summary (HTML)
 
@@ -129,11 +158,11 @@ Generate an executive assessment summary report:
 
 ```bash
 gauge --output vuln_summary \
-      --output-file-name assessment \
+      --output-dir ./reports \
       --customer "Acme Corp"
 ```
 
-This will create `assessment.html`.
+This generates `./reports/acme_corp.html`.
 
 ### Generate Both Outputs
 
@@ -141,11 +170,11 @@ Generate both assessment summary (HTML) and cost analysis (XLSX):
 
 ```bash
 gauge --output both \
-      --output-file-name report \
+      --output-dir ./reports \
       --customer "Acme Corp"
 ```
 
-This will create `report.html` and `report.xlsx`.
+This generates both `./reports/acme_corp.html` and `./reports/acme_corp.xlsx`.
 
 ### With FIPS Cost Analysis
 
@@ -153,7 +182,8 @@ Add FIPS implementation cost calculations (XLSX only):
 
 ```bash
 gauge --output cost_analysis \
-      --output-file-name cost-analysis \
+      --output-dir ./reports \
+      --customer "Acme Corp" \
       --with-fips
 ```
 
@@ -165,7 +195,8 @@ Include CHPS (Container Hardening and Provenance Scanner) scoring:
 
 ```bash
 gauge --output both \
-      --output-file-name report \
+      --output-dir ./reports \
+      --customer "Acme Corp" \
       --with-chps
 ```
 
@@ -179,7 +210,8 @@ Override the default platform for specialized environments:
 
 ```bash
 gauge --platform linux/arm64 \
-      --output-file-name arm64-report
+      --output-dir ./reports \
+      --customer "Acme Corp"
 ```
 
 **Default behavior**: Gauge uses `linux/amd64` by default to ensure consistent results across all environments (including Apple Silicon Macs). This ensures that:
@@ -208,7 +240,7 @@ Optional header row is automatically skipped.
 |--------|---------|-------------|
 | `-s, --source` | `images.csv` | Source CSV file with image pairs |
 | `-o, --output` | `both` | Output type: `cost_analysis` (XLSX), `vuln_summary` (HTML), or `both` |
-| `--output-file-name` | `gauge_output` | Base filename for output files |
+| `--output-dir` | `.` (current directory) | Output directory for generated reports |
 
 ### Common Options
 
@@ -317,11 +349,11 @@ Generate a simple assessment summary report:
 ```bash
 gauge --source my-images.csv \
       --output vuln_summary \
-      --output-file-name assessment \
+      --output-dir ./reports \
       --customer "Acme Corporation"
 ```
 
-This creates `assessment.html`.
+This generates `./reports/acme_corporation.html`.
 
 ### Full Cost Analysis with FIPS
 
@@ -330,7 +362,7 @@ Generate a comprehensive cost analysis with ROI and FIPS calculations:
 ```bash
 gauge --source production-images.csv \
       --output cost_analysis \
-      --output-file-name cost-analysis \
+      --output-dir ./reports \
       --customer "Acme Corp" \
       --hours-per-vuln 4 \
       --hourly-rate 125 \
@@ -338,7 +370,7 @@ gauge --source production-images.csv \
       --max-workers 8
 ```
 
-This creates `cost-analysis.xlsx`.
+This generates `./reports/acme_corp.xlsx` with FIPS cost analysis.
 
 ### Generate Both Outputs
 
@@ -347,14 +379,14 @@ Generate both assessment summary and cost analysis in one scan:
 ```bash
 gauge --source my-images.csv \
       --output both \
-      --output-file-name complete-report \
+      --output-dir ./reports \
       --customer "Acme Corp" \
       --exec-summary summary.md \
       --hours-per-vuln 4 \
       --hourly-rate 125
 ```
 
-This creates `complete-report.html` and `complete-report.xlsx`.
+This generates both `./reports/acme_corp.html` and `./reports/acme_corp.xlsx`.
 
 ### High-Performance Scan
 
@@ -363,12 +395,13 @@ Maximize scanning speed for large fleets:
 ```bash
 gauge --source large-fleet.csv \
       --output vuln_summary \
-      --output-file-name fleet-assessment \
+      --output-dir ./reports \
+      --customer "Large Fleet" \
       --max-workers 12 \
       --no-fresh-check  # Skip freshness checks for speed
 ```
 
-This creates `fleet-assessment.html`.
+This generates `./reports/large_fleet.html`.
 
 ### Resume Interrupted Scan
 
@@ -378,7 +411,9 @@ For long-running scans that may be interrupted, use checkpoint/resume functional
 # Start a long scan (creates checkpoint automatically)
 gauge --source large-fleet.csv \
       --output both \
-      --output-file-name report
+      --output-dir ./reports \
+      --customer "Fleet Analysis" \
+      --resume
 
 # If interrupted (Ctrl+C), you'll see:
 # Scan interrupted! Partial results saved to checkpoint.
@@ -387,7 +422,8 @@ gauge --source large-fleet.csv \
 # Resume from where you left off
 gauge --source large-fleet.csv \
       --output both \
-      --output-file-name report \
+      --output-dir ./reports \
+      --customer "Fleet Analysis" \
       --resume
 
 # Output:

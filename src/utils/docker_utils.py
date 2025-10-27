@@ -7,6 +7,7 @@ supporting both Docker and Podman automatically.
 
 import json
 import logging
+import os
 import subprocess
 from typing import Optional
 
@@ -218,13 +219,13 @@ class DockerClient:
 
     def ensure_chainguard_auth(self) -> bool:
         """
-        Ensure authentication to cgr.dev/chainguard-private via chainctl.
+        Ensure authentication to cgr.dev is configured.
 
-        This prevents multiple threads from spawning separate authentication
-        requests when pulling Chainguard private images.
+        For local execution: Checks if chainctl is authenticated
+        For containers: Trusts that Docker credential helper is configured on host
 
         Returns:
-            True if authenticated successfully, False otherwise
+            True if authentication is configured or chainctl not available (container mode)
         """
         try:
             # Check if chainctl is available
@@ -235,31 +236,41 @@ class DockerClient:
             )
 
             if result.returncode != 0:
-                logger.debug("chainctl not found, skipping Chainguard authentication")
-                return False
+                # chainctl not found - assume running in container with host Docker auth
+                logger.info("✓ Running in container mode, using host Docker authentication")
+                return True
 
-            # Perform authentication via chainctl auth login with org-name
-            logger.info("Authenticating to cgr.dev/chainguard-private via chainctl...")
-            result = subprocess.run(
-                ["chainctl", "auth", "login", "--org-name", "chainguard-private"],
+            # chainctl available - check if authenticated
+            token_result = subprocess.run(
+                ["chainctl", "auth", "token"],
+                capture_output=True,
+                timeout=10
+            )
+
+            if token_result.returncode == 0:
+                logger.info("✓ Chainguard authentication configured")
+                return True
+
+            # Not authenticated, try to login
+            logger.info("Authenticating to Chainguard...")
+            login_result = subprocess.run(
+                ["chainctl", "auth", "login"],
                 capture_output=True,
                 timeout=60
             )
 
-            if result.returncode == 0:
-                logger.info("✓ Authenticated to cgr.dev/chainguard-private")
+            if login_result.returncode == 0:
+                logger.info("✓ Authenticated to Chainguard")
                 return True
-            else:
-                stderr = result.stderr.decode('utf-8') if result.stderr else ""
-                logger.warning(f"chainctl auth login failed: {stderr}")
-                return False
 
-        except subprocess.TimeoutExpired:
-            logger.warning("Timeout during chainctl auth login")
+            logger.debug("chainctl auth login failed")
             return False
-        except FileNotFoundError:
-            logger.debug("chainctl not found in PATH")
-            return False
+
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            # chainctl not available - assume container mode
+            logger.info("✓ Running in container mode, using host Docker authentication")
+            return True
         except Exception as e:
-            logger.error(f"Error during Chainguard authentication: {e}")
-            return False
+            logger.debug(f"Error checking Chainguard authentication: {e}")
+            # On error, assume container mode and let Docker handle auth
+            return True
