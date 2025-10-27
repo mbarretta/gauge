@@ -41,6 +41,8 @@ def _apply_template_variables(content: str, metrics: dict, customer_name: str) -
         "total_chainguard_vulns": str(metrics['total_chainguard_vulns']),
         "reduction_percentage": f"{metrics['reduction_percentage']:.1f}%",
         "total_reduction": str(metrics['total_reduction']),
+        "images_with_reduction": str(metrics['images_with_reduction']),
+        "average_reduction_per_image": f"{metrics['average_reduction_per_image']:.1f}",
     }
 
     for key, value in template_vars.items():
@@ -167,6 +169,16 @@ class HTMLGenerator:
         if total_customer_vulns > 0:
             reduction_percentage = (total_reduction / total_customer_vulns) * 100
 
+        # Count images with reduction (where Chainguard has fewer CVEs)
+        images_with_reduction = sum(
+            1 for r in results
+            if r.chainguard_analysis.vulnerabilities.total < r.alternative_analysis.vulnerabilities.total
+        )
+
+        # Calculate average reduction per image
+        images_scanned = len(results)
+        average_reduction_per_image = total_reduction / images_scanned if images_scanned > 0 else 0.0
+
         # Per-severity summary
         alternative_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
         chainguard_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
@@ -192,7 +204,9 @@ class HTMLGenerator:
             'total_chainguard_vulns': total_cgr_vulns,
             'total_reduction': total_reduction,
             'reduction_percentage': round(reduction_percentage, 2),
-            'images_scanned': len(results),
+            'images_scanned': images_scanned,
+            'images_with_reduction': images_with_reduction,
+            'average_reduction_per_image': round(average_reduction_per_image, 1),
             'alternative_summary': alternative_summary,
             'chainguard_summary': chainguard_summary,
         }
@@ -308,6 +322,13 @@ class HTMLGenerator:
 
     def _build_images_scanned_section(self, image_pairs: list) -> str:
         """Build the images scanned comparison table section."""
+        # Check if any Chainguard images used fallback
+        has_fallback = any(pair['chainguard'].used_latest_fallback for pair in image_pairs)
+
+        fallback_note = ""
+        if has_fallback:
+            fallback_note = '<p style="margin-top: 20px; font-size: 12px; color: #6b7280;"><span style="color: #7545fb; font-weight: bold;">*</span> Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison.</p>'
+
         return f"""
         <!-- Image Comparison Table -->
         <div class="images-scanned-section">
@@ -328,6 +349,7 @@ class HTMLGenerator:
                     </tbody>
                 </table>
             </div>
+            {fallback_note}
         </div>"""
 
     def _build_chps_section_if_needed(self, results: list[ScanResult]) -> str:
@@ -401,6 +423,11 @@ class HTMLGenerator:
             customer_breakdown = self._format_vulnerability_breakdown(customer)
             chainguard_breakdown = self._format_vulnerability_breakdown(chainguard)
 
+            # Add asterisk if Chainguard image used fallback to :latest
+            chainguard_name = chainguard.name
+            if chainguard.used_latest_fallback:
+                chainguard_name += ' <span style="color: #7545fb; font-weight: bold;">*</span>'
+
             rows.append(f"""
                 <tr class="image-comparison-row">
                     <td class="image-name-cell">
@@ -408,7 +435,7 @@ class HTMLGenerator:
                     </td>
                     <td class="vulnerability-count">{customer_breakdown}</td>
                     <td class="image-name-cell">
-                        <code class="image-name">{chainguard.name}</code>
+                        <code class="image-name">{chainguard_name}</code>
                     </td>
                     <td class="vulnerability-count">{chainguard_breakdown}</td>
                 </tr>
@@ -524,6 +551,7 @@ class HTMLGenerator:
     def _generate_chps_section(self, results: list[ScanResult]) -> str:
         """Generate CHPS scoring section."""
         rows = []
+        has_fallback = False
         for result in results:
             alternative = result.alternative_analysis
             chainguard = result.chainguard_analysis
@@ -535,6 +563,12 @@ class HTMLGenerator:
             chainguard_score = chainguard.chps_score if chainguard and chainguard.chps_score else None
             chainguard_display = self._format_chps_score_display(chainguard_score)
 
+            # Add asterisk if Chainguard image used fallback to :latest
+            chainguard_name = chainguard.name if chainguard else 'N/A'
+            if chainguard and chainguard.used_latest_fallback:
+                chainguard_name += ' <span style="color: #7545fb; font-weight: bold;">*</span>'
+                has_fallback = True
+
             # Build single row with image pair
             rows.append(f"""
                 <tr class="image-comparison-row">
@@ -543,11 +577,15 @@ class HTMLGenerator:
                     </td>
                     <td class="vulnerability-count">{alternative_display}</td>
                     <td class="image-name-cell">
-                        <code class="image-name">{chainguard.name if chainguard else 'N/A'}</code>
+                        <code class="image-name">{chainguard_name}</code>
                     </td>
                     <td class="vulnerability-count">{chainguard_display}</td>
                 </tr>
             """)
+
+        fallback_note = ""
+        if has_fallback:
+            fallback_note = '<p style="margin-top: 10px; font-size: 12px; color: #6b7280;"><span style="color: #7545fb; font-weight: bold;">*</span> Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison.</p>'
 
         return f"""
         <!-- CHPS Scoring Section -->
@@ -569,6 +607,7 @@ class HTMLGenerator:
                     </tbody>
                 </table>
             </div>
+            {fallback_note}
             <p><em>Note: CHPS scoring evaluates non-CVE security factors including provenance, SBOM quality, signing, and container hardening practices.</em></p>
         </div>
 """

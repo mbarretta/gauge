@@ -120,6 +120,8 @@ class ImageAnalysis:
         digest: Image digest (sha256)
         cache_hit: Whether result came from cache
         chps_score: CHPS scoring results (optional)
+        used_latest_fallback: Whether we fell back to :latest tag due to old image
+        original_image: Original image reference if fallback was used
     """
 
     name: str
@@ -130,6 +132,8 @@ class ImageAnalysis:
     digest: Optional[str] = None
     cache_hit: bool = False
     chps_score: Optional[CHPSScore] = None
+    used_latest_fallback: bool = False
+    original_image: Optional[str] = None
 
 
 @dataclass(frozen=True)

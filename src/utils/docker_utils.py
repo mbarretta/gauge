@@ -187,6 +187,33 @@ class DockerClient:
 
         return 0.0
 
+    def get_image_created_date(self, image: str) -> Optional[str]:
+        """
+        Get image creation timestamp.
+
+        Args:
+            image: Image reference
+
+        Returns:
+            ISO 8601 timestamp string (e.g., "2024-10-27T12:31:00.000Z") or None if unavailable
+        """
+        try:
+            result = subprocess.run(
+                [self.runtime, "inspect", "--format={{.Created}}", image],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode == 0:
+                created = result.stdout.strip()
+                return created if created else None
+
+        except (subprocess.TimeoutExpired, ValueError) as e:
+            logger.debug(f"Failed to get creation date for {image}: {e}")
+
+        return None
+
     def pull_image(self, image: str, platform: Optional[str] = None) -> bool:
         """
         Pull an image from registry.

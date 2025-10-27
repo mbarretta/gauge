@@ -140,6 +140,8 @@ class ScanCache:
                 digest=digest,
                 cache_hit=True,
                 chps_score=chps_score,
+                used_latest_fallback=data.get("used_latest_fallback", False),
+                original_image=data.get("original_image"),
             )
 
             logger.debug(f"Cache hit for {image_name}")
@@ -182,6 +184,8 @@ class ScanCache:
                 "size_mb": analysis.size_mb,
                 "package_count": analysis.package_count,
                 "vulnerabilities": analysis.vulnerabilities.to_dict(),
+                "used_latest_fallback": analysis.used_latest_fallback,
+                "original_image": analysis.original_image,
             }
 
             # Add CHPS score if present

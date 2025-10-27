@@ -251,6 +251,76 @@ class VulnerabilityScanner:
             negligible=counts[SeverityLevel.NEGLIGIBLE.value],
         )
 
+    def _is_chainguard_image(self, image: str) -> bool:
+        """
+        Check if an image is from Chainguard registry.
+
+        Args:
+            image: Image reference to check
+
+        Returns:
+            True if image is from cgr.dev, False otherwise
+        """
+        return "cgr.dev" in image
+
+    def _check_and_fallback_if_old(self, image: str) -> tuple[str, bool, Optional[str]]:
+        """
+        Check if Chainguard image is older than 30 days and fallback to :latest if needed.
+
+        Args:
+            image: Chainguard image reference to check
+
+        Returns:
+            Tuple of (image_to_use, used_fallback, original_image)
+        """
+        from dateutil import parser as date_parser
+        from datetime import timedelta
+
+        try:
+            # Pull the image first to ensure we have it locally
+            if self.check_fresh_images:
+                self.docker.ensure_fresh_image(image, self.platform)
+
+            # Get the creation date
+            created_str = self.docker.get_image_created_date(image)
+            if not created_str:
+                logger.warning(f"Could not get creation date for {image}, using as-is")
+                return image, False, None
+
+            # Parse the creation date
+            created_date = date_parser.parse(created_str)
+            now = datetime.now(timezone.utc)
+
+            # Make created_date timezone-aware if it isn't
+            if created_date.tzinfo is None:
+                created_date = created_date.replace(tzinfo=timezone.utc)
+
+            # Calculate age in days
+            age_days = (now - created_date).days
+
+            logger.debug(f"Image {image} is {age_days} days old")
+
+            # If older than 30 days, fallback to :latest
+            if age_days > 30:
+                # Extract the base image without tag
+                if ":" in image:
+                    base_image = image.rsplit(":", 1)[0]
+                    latest_image = f"{base_image}:latest"
+                    logger.warning(
+                        f"Image {image} is {age_days} days old (> 30 days), "
+                        f"falling back to {latest_image}"
+                    )
+                    return latest_image, True, image
+                else:
+                    # No tag specified, already using latest
+                    return image, False, None
+
+            return image, False, None
+
+        except Exception as e:
+            logger.warning(f"Error checking image age for {image}: {e}, using as-is")
+            return image, False, None
+
     def scan_image_pair(self, pair: ImagePair) -> ScanResult:
         """
         Scan both images in a pair.
@@ -265,7 +335,34 @@ class VulnerabilityScanner:
 
         try:
             alternative_analysis = self.scan_image(pair.alternative_image)
-            chainguard_analysis = self.scan_image(pair.chainguard_image)
+
+            # For Chainguard images, check if image is older than 30 days
+            # and fallback to :latest if needed
+            chainguard_image = pair.chainguard_image
+            used_fallback = False
+            original_image = None
+
+            if self._is_chainguard_image(chainguard_image):
+                chainguard_image, used_fallback, original_image = self._check_and_fallback_if_old(
+                    chainguard_image
+                )
+
+            chainguard_analysis = self.scan_image(chainguard_image)
+
+            # Update the analysis with fallback information if needed
+            if used_fallback:
+                chainguard_analysis = ImageAnalysis(
+                    name=chainguard_analysis.name,
+                    size_mb=chainguard_analysis.size_mb,
+                    package_count=chainguard_analysis.package_count,
+                    vulnerabilities=chainguard_analysis.vulnerabilities,
+                    scan_timestamp=chainguard_analysis.scan_timestamp,
+                    digest=chainguard_analysis.digest,
+                    cache_hit=chainguard_analysis.cache_hit,
+                    chps_score=chainguard_analysis.chps_score,
+                    used_latest_fallback=True,
+                    original_image=original_image,
+                )
 
             return ScanResult(
                 pair=pair,
