@@ -101,9 +101,30 @@ class VulnerabilityScanner:
         Returns:
             ImageAnalysis with scan results
         """
+        original_image = image
+        used_fallback = False
+        pull_successful = True
+
         # Check if we should update the image first
         if self.check_fresh_images:
-            self.docker.ensure_fresh_image(image, self.platform)
+            image, used_fallback, pull_successful = self.docker.ensure_fresh_image(image, self.platform)
+            if used_fallback:
+                logger.warning(
+                    f"Using {image} as fallback for {original_image}"
+                )
+            if not pull_successful:
+                logger.error(f"Failed to pull image {original_image} - cannot scan")
+                # Return empty analysis on pull failure
+                return ImageAnalysis(
+                    name=original_image,
+                    size_mb=0.0,
+                    package_count=0,
+                    vulnerabilities=VulnerabilityCount(),
+                    scan_timestamp=datetime.now(timezone.utc),
+                    digest=None,
+                    used_latest_fallback=used_fallback,
+                    original_image=original_image if used_fallback else None,
+                )
 
         # Get image digest for caching
         digest = self.docker.get_image_digest(image)
@@ -113,6 +134,20 @@ class VulnerabilityScanner:
         cached = self.cache.get(image, digest, require_chps=require_chps)
         if cached:
             logger.info(f"✓ {image} (cached)")
+            # If we used fallback, update the cached result to reflect that
+            if used_fallback:
+                cached = ImageAnalysis(
+                    name=cached.name,
+                    size_mb=cached.size_mb,
+                    package_count=cached.package_count,
+                    vulnerabilities=cached.vulnerabilities,
+                    scan_timestamp=cached.scan_timestamp,
+                    digest=cached.digest,
+                    cache_hit=cached.cache_hit,
+                    chps_score=cached.chps_score,
+                    used_latest_fallback=True,
+                    original_image=original_image,
+                )
             return cached
 
         # Perform fresh scan
@@ -148,6 +183,8 @@ class VulnerabilityScanner:
                 digest=digest,
                 cache_hit=False,
                 chps_score=chps_score,
+                used_latest_fallback=used_fallback,
+                original_image=original_image if used_fallback else None,
             )
 
             # Cache the result
@@ -171,6 +208,8 @@ class VulnerabilityScanner:
                 vulnerabilities=VulnerabilityCount(),
                 scan_timestamp=datetime.now(timezone.utc),
                 digest=digest,
+                used_latest_fallback=used_fallback,
+                original_image=original_image if used_fallback else None,
             )
 
     def _run_syft(self, image: str) -> tuple[int, str]:
@@ -182,24 +221,39 @@ class VulnerabilityScanner:
 
         Returns:
             Tuple of (package_count, sbom_json_string)
+
+        Raises:
+            RuntimeError: If syft command fails
         """
         # Note: We don't pass --platform to Syft because we've already pulled
         # the correct platform-specific image using ensure_fresh_image().
         # Syft will scan whatever local image is available.
         cmd = ["syft", image, "-o", "json"]
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=True
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=True
+            )
 
-        syft_data = json.loads(result.stdout)
-        package_count = len(syft_data.get("artifacts", []))
+            syft_data = json.loads(result.stdout)
+            package_count = len(syft_data.get("artifacts", []))
 
-        return package_count, result.stdout
+            return package_count, result.stdout
+
+        except subprocess.CalledProcessError as e:
+            # Capture and include stderr in error message for better debugging
+            error_msg = f"Syft command failed with exit code {e.returncode}"
+            if e.stderr:
+                error_msg += f"\nStderr: {e.stderr.strip()}"
+            if e.stdout:
+                error_msg += f"\nStdout: {e.stdout.strip()}"
+            raise RuntimeError(error_msg) from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(f"Syft scan timed out after 300 seconds") from e
 
     def _run_grype_on_sbom(self, sbom_json: str, image_name: str) -> VulnerabilityCount:
         """
@@ -211,17 +265,31 @@ class VulnerabilityScanner:
 
         Returns:
             VulnerabilityCount with severity breakdown
-        """
-        result = subprocess.run(
-            ["grype", "-o", "json"],
-            input=sbom_json,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=True
-        )
 
-        grype_data = json.loads(result.stdout)
+        Raises:
+            RuntimeError: If grype command fails
+        """
+        try:
+            result = subprocess.run(
+                ["grype", "-o", "json"],
+                input=sbom_json,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=True
+            )
+
+            grype_data = json.loads(result.stdout)
+        except subprocess.CalledProcessError as e:
+            # Capture and include stderr in error message for better debugging
+            error_msg = f"Grype command failed with exit code {e.returncode}"
+            if e.stderr:
+                error_msg += f"\nStderr: {e.stderr.strip()}"
+            if e.stdout:
+                error_msg += f"\nStdout: {e.stdout.strip()}"
+            raise RuntimeError(error_msg) from e
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(f"Grype scan timed out after 300 seconds") from e
 
         # Count vulnerabilities by severity
         counts = {
@@ -251,6 +319,82 @@ class VulnerabilityScanner:
             negligible=counts[SeverityLevel.NEGLIGIBLE.value],
         )
 
+    def _is_chainguard_image(self, image: str) -> bool:
+        """
+        Check if an image is from Chainguard registry.
+
+        Args:
+            image: Image reference to check
+
+        Returns:
+            True if image is from cgr.dev, False otherwise
+        """
+        return "cgr.dev" in image
+
+    def _check_and_fallback_if_old(self, image: str) -> tuple[str, bool, Optional[str]]:
+        """
+        Check if Chainguard image is older than 30 days and fallback to :latest if needed.
+
+        Args:
+            image: Chainguard image reference to check
+
+        Returns:
+            Tuple of (image_to_use, used_fallback, original_image)
+        """
+        from dateutil import parser as date_parser
+        from datetime import timedelta
+
+        try:
+            # Pull the image first to ensure we have it locally
+            pulled_image = image
+            if self.check_fresh_images:
+                pulled_image, _, pull_success = self.docker.ensure_fresh_image(image, self.platform)
+                # Note: We ignore the fallback from ensure_fresh_image here because
+                # this method has its own age-based fallback logic for Chainguard images
+                if not pull_success:
+                    logger.warning(f"Failed to pull {image} for age check, using as-is")
+                    return image, False, None
+
+            # Get the creation date
+            created_str = self.docker.get_image_created_date(pulled_image)
+            if not created_str:
+                logger.warning(f"Could not get creation date for {pulled_image}, using as-is")
+                return pulled_image, False, None
+
+            # Parse the creation date
+            created_date = date_parser.parse(created_str)
+            now = datetime.now(timezone.utc)
+
+            # Make created_date timezone-aware if it isn't
+            if created_date.tzinfo is None:
+                created_date = created_date.replace(tzinfo=timezone.utc)
+
+            # Calculate age in days
+            age_days = (now - created_date).days
+
+            logger.debug(f"Image {pulled_image} is {age_days} days old")
+
+            # If older than 30 days, fallback to :latest
+            if age_days > 30:
+                # Extract the base image without tag
+                if ":" in pulled_image:
+                    base_image = pulled_image.rsplit(":", 1)[0]
+                    latest_image = f"{base_image}:latest"
+                    logger.warning(
+                        f"Image {pulled_image} is {age_days} days old (> 30 days), "
+                        f"falling back to {latest_image}"
+                    )
+                    return latest_image, True, image
+                else:
+                    # No tag specified, already using latest
+                    return pulled_image, False, None
+
+            return pulled_image, False, None
+
+        except Exception as e:
+            logger.warning(f"Error checking image age for {image}: {e}, using as-is")
+            return image, False, None
+
     def scan_image_pair(self, pair: ImagePair) -> ScanResult:
         """
         Scan both images in a pair.
@@ -265,7 +409,34 @@ class VulnerabilityScanner:
 
         try:
             alternative_analysis = self.scan_image(pair.alternative_image)
-            chainguard_analysis = self.scan_image(pair.chainguard_image)
+
+            # For Chainguard images, check if image is older than 30 days
+            # and fallback to :latest if needed
+            chainguard_image = pair.chainguard_image
+            used_fallback = False
+            original_image = None
+
+            if self._is_chainguard_image(chainguard_image):
+                chainguard_image, used_fallback, original_image = self._check_and_fallback_if_old(
+                    chainguard_image
+                )
+
+            chainguard_analysis = self.scan_image(chainguard_image)
+
+            # Update the analysis with fallback information if needed
+            if used_fallback:
+                chainguard_analysis = ImageAnalysis(
+                    name=chainguard_analysis.name,
+                    size_mb=chainguard_analysis.size_mb,
+                    package_count=chainguard_analysis.package_count,
+                    vulnerabilities=chainguard_analysis.vulnerabilities,
+                    scan_timestamp=chainguard_analysis.scan_timestamp,
+                    digest=chainguard_analysis.digest,
+                    cache_hit=chainguard_analysis.cache_hit,
+                    chps_score=chainguard_analysis.chps_score,
+                    used_latest_fallback=True,
+                    original_image=original_image,
+                )
 
             return ScanResult(
                 pair=pair,

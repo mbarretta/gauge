@@ -122,16 +122,19 @@ class DockerClient:
             logger.debug(f"Failed to get remote digest for {image}: {e}")
             return None
 
-    def ensure_fresh_image(self, image: str, platform: Optional[str] = None) -> bool:
+    def ensure_fresh_image(self, image: str, platform: Optional[str] = None) -> tuple[str, bool, bool]:
         """
-        Ensure local image is up-to-date with remote.
+        Ensure local image is up-to-date with remote, with intelligent fallback strategies.
 
         Args:
             image: Image reference to check/pull
             platform: Platform specification (default: "linux/amd64")
 
         Returns:
-            True if image was updated, False otherwise
+            Tuple of (image_used, used_fallback, pull_successful) where:
+                - image_used: The actual image reference that was used
+                - used_fallback: True if any fallback was used, False otherwise
+                - pull_successful: True if image was successfully pulled, False otherwise
         """
         try:
             # Default to linux/amd64 for consistency across environments
@@ -139,26 +142,22 @@ class DockerClient:
 
             remote_digest = self.get_remote_digest(image)
             if not remote_digest:
-                logger.debug(f"Could not get remote digest for {image}")
-                return False
+                logger.debug(f"Could not get remote digest for {image}, attempting pull with fallback")
+                # Image might not exist, try pulling with fallback
+                return self.pull_image_with_fallback(image, platform)
 
             local_digest = self.get_image_digest(image)
 
             if not local_digest or local_digest != remote_digest:
                 logger.info(f"Pulling fresh copy of {image} ({platform})")
-                result = subprocess.run(
-                    [self.runtime, "pull", "--platform", platform, image],
-                    capture_output=True,
-                    timeout=300
-                )
-                return result.returncode == 0
+                return self.pull_image_with_fallback(image, platform)
 
             logger.debug(f"Image {image} is up-to-date")
-            return False
+            return image, False, True
 
         except subprocess.TimeoutExpired:
             logger.warning(f"Timeout pulling {image}")
-            return False
+            return image, False, False
 
     def get_image_size_mb(self, image: str) -> float:
         """
@@ -188,6 +187,33 @@ class DockerClient:
 
         return 0.0
 
+    def get_image_created_date(self, image: str) -> Optional[str]:
+        """
+        Get image creation timestamp.
+
+        Args:
+            image: Image reference
+
+        Returns:
+            ISO 8601 timestamp string (e.g., "2024-10-27T12:31:00.000Z") or None if unavailable
+        """
+        try:
+            result = subprocess.run(
+                [self.runtime, "inspect", "--format={{.Created}}", image],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            if result.returncode == 0:
+                created = result.stdout.strip()
+                return created if created else None
+
+        except (subprocess.TimeoutExpired, ValueError) as e:
+            logger.debug(f"Failed to get creation date for {image}: {e}")
+
+        return None
+
     def pull_image(self, image: str, platform: Optional[str] = None) -> bool:
         """
         Pull an image from registry.
@@ -208,6 +234,7 @@ class DockerClient:
             result = subprocess.run(
                 cmd,
                 capture_output=True,
+                text=True,
                 timeout=300
             )
 
@@ -216,6 +243,192 @@ class DockerClient:
         except subprocess.TimeoutExpired:
             logger.warning(f"Timeout pulling {image}")
             return False
+
+    def image_exists_in_registry(self, image: str) -> bool:
+        """
+        Check if an image exists in the remote registry.
+
+        Args:
+            image: Image reference to check
+
+        Returns:
+            True if image exists in registry, False otherwise
+        """
+        try:
+            result = subprocess.run(
+                [self.runtime, "manifest", "inspect", image],
+                capture_output=True,
+                timeout=30
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    def _has_registry_prefix(self, image: str) -> bool:
+        """
+        Check if an image already has a registry prefix.
+
+        Args:
+            image: Image reference to check
+
+        Returns:
+            True if image has a registry prefix, False otherwise
+        """
+        # If there's no slash, it's a simple image name (e.g., "ubuntu")
+        if "/" not in image:
+            return False
+
+        # Split on first slash to get potential registry part
+        first_part = image.split("/")[0]
+
+        # If first part contains a dot or colon, it's likely a registry
+        # (e.g., "gcr.io", "registry.example.com:5000")
+        return "." in first_part or ":" in first_part
+
+    def _try_mirror_gcr_fallback(self, image: str) -> Optional[str]:
+        """
+        Try to construct a mirror.gcr.io fallback URL for Docker Hub images.
+
+        Args:
+            image: Original image reference
+
+        Returns:
+            mirror.gcr.io URL if applicable, None otherwise
+        """
+        # Only apply to Docker Hub images (no existing registry prefix)
+        if self._has_registry_prefix(image):
+            logger.debug(f"Image {image} already has registry prefix, skipping mirror.gcr.io fallback")
+            return None
+
+        # Skip digest-based images
+        if "@sha256:" in image:
+            logger.debug(f"Image {image} is digest-based, skipping mirror.gcr.io fallback")
+            return None
+
+        # Transform official images: ubuntu:20.04 -> mirror.gcr.io/library/ubuntu:20.04
+        # Transform user/org images: user/repo:tag -> mirror.gcr.io/user/repo:tag
+        if "/" not in image:
+            # Official image (e.g., ubuntu, node, python)
+            mirror_image = f"mirror.gcr.io/library/{image}"
+        else:
+            # User/org image (e.g., user/repo:tag)
+            mirror_image = f"mirror.gcr.io/{image}"
+
+        logger.debug(f"Mirror.gcr.io fallback for {image}: {mirror_image}")
+        return mirror_image
+
+    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None) -> tuple[str, bool, bool]:
+        """
+        Pull an image from registry with intelligent fallback strategies.
+
+        Strategy order:
+        1. Try exact image as specified
+        2. If Docker Hub image and failed, try mirror.gcr.io fallback FIRST
+        3. If that fails, try with :latest tag as last resort
+
+        Args:
+            image: Image reference to pull
+            platform: Platform specification (default: "linux/amd64")
+
+        Returns:
+            Tuple of (image_used, used_fallback, pull_successful) where:
+                - image_used: The actual image reference that was pulled (or attempted)
+                - used_fallback: True if any fallback was used, False otherwise
+                - pull_successful: True if image was successfully pulled, False otherwise
+        """
+        platform = platform or DEFAULT_PLATFORM
+        original_image = image
+
+        # Strategy 1: Try to pull the exact image
+        logger.debug(f"Attempting to pull {image}")
+
+        try:
+            result = subprocess.run(
+                [self.runtime, "pull", "--platform", platform, image],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+
+            if result.returncode == 0:
+                logger.debug(f"Successfully pulled {image}")
+                return image, False, True
+
+            # Check error type
+            stderr = result.stderr.lower()
+            is_not_found = any(msg in stderr for msg in [
+                "not found",
+                "manifest unknown",
+                "does not exist",
+                "no such image",
+                "404"
+            ])
+            is_rate_limited = any(msg in stderr for msg in [
+                "toomanyrequests",
+                "rate limit",
+                "too many requests"
+            ])
+
+            # If not found OR rate limited, try fallbacks
+            if is_not_found or is_rate_limited:
+                if is_rate_limited:
+                    logger.warning(f"Rate limited accessing {image}, trying fallback strategies")
+                else:
+                    logger.warning(f"Image {image} not found, trying fallback strategies")
+
+                # Strategy 2: Try mirror.gcr.io fallback FIRST for Docker Hub images
+                mirror_image = self._try_mirror_gcr_fallback(original_image)
+                if mirror_image:
+                    logger.warning(
+                        f"Trying mirror.gcr.io fallback for {original_image} -> {mirror_image}"
+                    )
+
+                    result = subprocess.run(
+                        [self.runtime, "pull", "--platform", platform, mirror_image],
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+
+                    if result.returncode == 0:
+                        logger.info(f"✓ Mirror.gcr.io fallback successful for {mirror_image}")
+                        return mirror_image, True, True
+
+                    logger.debug(f"Mirror.gcr.io fallback also failed: {result.stderr}")
+
+                # Strategy 3: Try fallback to :latest as last resort (if not already using it and not digest-based)
+                if not image.endswith(":latest") and "@sha256:" not in image and ":" in image:
+                    base_image = image.rsplit(":", 1)[0]
+                    latest_image = f"{base_image}:latest"
+
+                    logger.warning(
+                        f"Trying :latest fallback: {latest_image}"
+                    )
+
+                    result = subprocess.run(
+                        [self.runtime, "pull", "--platform", platform, latest_image],
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+
+                    if result.returncode == 0:
+                        logger.info(f"✓ Successfully fell back to {latest_image}")
+                        return latest_image, True, True
+
+                    logger.debug(f"Fallback to {latest_image} also failed: {result.stderr}")
+
+                # All fallback strategies failed
+                logger.error(f"All fallback strategies failed for {original_image}")
+                return original_image, False, False
+            else:
+                # Not a "not found" or rate limit error
+                logger.error(f"Failed to pull {image}: {result.stderr}")
+                return image, False, False
+
+        except subprocess.TimeoutExpired:
+            logger.error(f"Timeout pulling {image}")
+            return image, False, False
 
     def ensure_chainguard_auth(self) -> bool:
         """

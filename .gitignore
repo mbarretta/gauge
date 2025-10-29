@@ -1,3 +1,5 @@
+# dir for working files
+customer/
 # Python
 __pycache__/
 *.py[cod]
