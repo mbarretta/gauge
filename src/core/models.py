@@ -122,6 +122,8 @@ class ImageAnalysis:
         chps_score: CHPS scoring results (optional)
         used_latest_fallback: Whether we fell back to :latest tag due to old image
         original_image: Original image reference if fallback was used
+        kev_count: Number of CISA Known Exploited Vulnerabilities found (optional)
+        kev_cves: List of CVE IDs that are KEVs (optional)
     """
 
     name: str
@@ -134,6 +136,8 @@ class ImageAnalysis:
     chps_score: Optional[CHPSScore] = None
     used_latest_fallback: bool = False
     original_image: Optional[str] = None
+    kev_count: int = 0
+    kev_cves: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

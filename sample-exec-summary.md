@@ -1,12 +1,13 @@
 ### Security Vulnerability Assessment for {{customer_name}}
 
-A security assessment of {{images_scanned}} images currently in use at {{customer_name}} compared against Chainguard drop-in replacements found a {{reduction_percentage}} reduction in vulnerabilities. Current images contain {{total_customer_vulns}} CVEs, while Chainguard equivalents reduce this to {{total_chainguard_vulns}} .
+A security assessment of {{images_scanned}} images currently in use at {{customer_name}} compared against Chainguard drop-in replacements found a {{reduction_percentage}} reduction in vulnerabilities. Current images contain {{total_customer_vulns}} CVEs, while Chainguard equivalents reduce this to {{total_chainguard_vulns}}.
 
 ### Key Findings
 
 - {{images_with_reduction}} of {{images_scanned}} images show lower CVEs with Chainguard Images.
 - Average per-image CVE reduction: {{average_reduction_per_image}}.
 - Based on this **sample** list of images from {{customer_name}} Chainguard images reduced {{total_customer_vulns}} vulnerabilities to {{total_chainguard_vulns}}. Rolling Chainguard out to the full {{customer_name}} environment would result in a much larger vulnerability count reduction.
+- **Known Exploited Vulnerabilities (KEVs)**: {{images_with_customer_kevs}} images contain {{total_customer_kevs}} actively exploited CVEs tracked by CISA, while Chainguard equivalents reduce this to {{total_chainguard_kevs}} KEVs across {{images_with_chainguard_kevs}} images.
 - Distroless/minimal bases eliminate unnecessary components resulting in a reduced attack surface and accumulation of CVEs 90% slower in runtime.
 
 

@@ -44,6 +44,7 @@ class VulnerabilityScanner:
         platform: Optional[str] = DEFAULT_PLATFORM,
         check_fresh_images: bool = True,
         with_chps: bool = False,
+        kev_catalog: Optional['KEVCatalog'] = None,
     ):
         """
         Initialize vulnerability scanner.
@@ -55,6 +56,7 @@ class VulnerabilityScanner:
             platform: Platform specification for scans (e.g., "linux/amd64")
             check_fresh_images: Whether to ensure images are up-to-date
             with_chps: Whether to include CHPS scoring
+            kev_catalog: KEV catalog for checking known exploited vulnerabilities
         """
         self.cache = cache
         self.docker = docker_client
@@ -62,6 +64,7 @@ class VulnerabilityScanner:
         self.platform = platform
         self.check_fresh_images = check_fresh_images
         self.with_chps = with_chps
+        self.kev_catalog = kev_catalog
 
         if with_chps:
             logger.info("CHPS scoring enabled, initializing CHPS scanner...")
@@ -148,7 +151,17 @@ class VulnerabilityScanner:
             package_count, sbom_json = self._run_syft(image)
 
             # Run Grype on SBOM to get vulnerabilities
-            vulnerabilities = self._run_grype_on_sbom(sbom_json, image)
+            vulnerabilities, cve_ids = self._run_grype_on_sbom(sbom_json, image)
+
+            # Check for KEVs if catalog is available
+            kev_cves = []
+            if self.kev_catalog and cve_ids:
+                for cve_id in cve_ids:
+                    if self.kev_catalog.is_kev(cve_id):
+                        kev_cves.append(cve_id)
+
+                if kev_cves:
+                    logger.warning(f"⚠️  {len(kev_cves)} Known Exploited Vulnerabilities found in {image}")
 
             # Run CHPS scoring if requested
             chps_score = None
@@ -172,15 +185,18 @@ class VulnerabilityScanner:
                 chps_score=chps_score,
                 used_latest_fallback=used_fallback,
                 original_image=original_image if used_fallback else None,
+                kev_count=len(kev_cves),
+                kev_cves=kev_cves,
             )
 
             # Cache the result
             self.cache.put(analysis)
 
+            kev_info = f", KEVs:{len(kev_cves)}" if kev_cves else ""
             logger.info(
                 f"✓ {image} - {vulnerabilities.total} CVEs "
                 f"(C:{vulnerabilities.critical} H:{vulnerabilities.high} "
-                f"M:{vulnerabilities.medium})"
+                f"M:{vulnerabilities.medium}{kev_info})"
             )
 
             return analysis
@@ -232,7 +248,7 @@ class VulnerabilityScanner:
         except subprocess.TimeoutExpired as e:
             raise RuntimeError(f"Syft scan timed out after 300 seconds") from e
 
-    def _run_grype_on_sbom(self, sbom_json: str, image_name: str) -> VulnerabilityCount:
+    def _run_grype_on_sbom(self, sbom_json: str, image_name: str) -> tuple[VulnerabilityCount, list[str]]:
         """
         Run Grype on SBOM to detect vulnerabilities.
 
@@ -241,7 +257,7 @@ class VulnerabilityScanner:
             image_name: Image name (for logging)
 
         Returns:
-            VulnerabilityCount with severity breakdown
+            Tuple of (VulnerabilityCount, list of CVE IDs)
 
         Raises:
             RuntimeError: If grype command fails
@@ -268,7 +284,7 @@ class VulnerabilityScanner:
         except subprocess.TimeoutExpired as e:
             raise RuntimeError(f"Grype scan timed out after 300 seconds") from e
 
-        # Count vulnerabilities by severity
+        # Count vulnerabilities by severity and collect CVE IDs
         counts = {
             SeverityLevel.CRITICAL.value: 0,
             SeverityLevel.HIGH.value: 0,
@@ -276,6 +292,7 @@ class VulnerabilityScanner:
             SeverityLevel.LOW.value: 0,
             SeverityLevel.NEGLIGIBLE.value: 0,
         }
+        cve_ids = []
 
         for match in grype_data.get("matches", []):
             severity = match["vulnerability"]["severity"]
@@ -285,9 +302,14 @@ class VulnerabilityScanner:
                 # Unknown or Negligible go into negligible bucket
                 counts[SeverityLevel.NEGLIGIBLE.value] += 1
 
+            # Collect CVE ID
+            cve_id = match.get("vulnerability", {}).get("id")
+            if cve_id and cve_id.startswith("CVE-"):
+                cve_ids.append(cve_id)
+
         total = sum(counts.values())
 
-        return VulnerabilityCount(
+        vuln_count = VulnerabilityCount(
             total=total,
             critical=counts[SeverityLevel.CRITICAL.value],
             high=counts[SeverityLevel.HIGH.value],
@@ -295,6 +317,8 @@ class VulnerabilityScanner:
             low=counts[SeverityLevel.LOW.value],
             negligible=counts[SeverityLevel.NEGLIGIBLE.value],
         )
+
+        return vuln_count, cve_ids
 
 
     def scan_image_pair(self, pair: ImagePair) -> ScanResult:

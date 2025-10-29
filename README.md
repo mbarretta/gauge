@@ -39,6 +39,7 @@
 ### Core Capabilities
 - **Dual Output Types**: Generate vulnerability assessment summaries (HTML) or cost analysis reports (XLSX)
 - **CHPs Scoring**: Container Hardening and Provenance Scanner integration for evaluating non-CVE security factors like provenance, SBOM quality, signing, and container hardening practices
+- **KEV Detection**: Optional integration with CISA's Known Exploited Vulnerabilities catalog to identify actively exploited CVEs in your images
 - **Intelligent Caching**: Digest-based caching dramatically improves performance on repeated scans
 - **Checkpoint/Resume**: Automatically save progress and resume interrupted scans without losing work
 - **Parallel Scanning**: Multi-threaded image scanning for optimal performance
@@ -204,6 +205,21 @@ This will include CHPS scores in both HTML and XLSX outputs. CHPS evaluates non-
 
 **Note:** CHPS runs in a container automatically. The first time you use `--with-chps`, the tool will pull the `ghcr.io/chps-dev/chps-scorer:latest` image. No local installation required!
 
+### With Known Exploited Vulnerabilities (KEV) Detection
+
+Check CVEs against CISA's Known Exploited Vulnerabilities catalog:
+
+```bash
+gauge --output both \
+      --output-dir ./reports \
+      --customer "Acme Corp" \
+      --with-kevs
+```
+
+This will fetch CISA's KEV catalog and identify which CVEs in your images are actively being exploited in the wild. KEVs are highlighted with red badges in HTML reports and red cells in XLSX reports, making them easy to spot for prioritization.
+
+**Note:** The KEV catalog is fetched from CISA on each run when `--with-kevs` is enabled. This ensures you always have the most up-to-date list of exploited vulnerabilities.
+
 ### Custom Platform Specification
 
 Override the default platform for specialized environments:
@@ -258,6 +274,39 @@ Optional header row is automatically skipped.
 | `-e, --exec-summary` | `exec-summary.md` | Markdown file for executive summary (optional if file doesn't exist) |
 | `-a, --appendix` | `appendix.md` | Markdown file for custom appendix (optional if file doesn't exist) |
 
+#### Template Variables for Executive Summary and Appendix
+
+Both the executive summary and appendix markdown files support template variable substitution. Use `{{variable_name}}` syntax to insert dynamic values:
+
+**Basic Metrics:**
+- `{{customer_name}}` - Customer name from `--customer` flag
+- `{{images_scanned}}` - Total number of images analyzed
+- `{{total_customer_vulns}}` - Total CVEs in customer/alternative images
+- `{{total_chainguard_vulns}}` - Total CVEs in Chainguard images
+- `{{total_reduction}}` - Total CVE reduction (customer - chainguard)
+- `{{reduction_percentage}}` - CVE reduction as percentage (with % sign)
+- `{{images_with_reduction}}` - Number of images where Chainguard has fewer CVEs
+- `{{average_reduction_per_image}}` - Average CVE reduction per image
+
+**KEV Metrics** (available when using `--with-kevs` flag):
+- `{{total_customer_kevs}}` - Total Known Exploited Vulnerabilities in customer images
+- `{{total_chainguard_kevs}}` - Total KEVs in Chainguard images
+- `{{kev_reduction}}` - KEV reduction (customer - chainguard)
+- `{{images_with_customer_kevs}}` - Number of customer images containing KEVs
+- `{{images_with_chainguard_kevs}}` - Number of Chainguard images containing KEVs
+
+**Example usage in markdown:**
+```markdown
+### Security Assessment for {{customer_name}}
+
+Analysis of {{images_scanned}} images found a {{reduction_percentage}} reduction in vulnerabilities.
+Current images contain {{total_customer_vulns}} CVEs, while Chainguard equivalents reduce this to {{total_chainguard_vulns}}.
+
+**Critical finding**: {{images_with_customer_kevs}} images contain {{total_customer_kevs}} actively exploited vulnerabilities (KEVs).
+```
+
+See `sample-exec-summary.md` and `sample-appendix.md` for complete examples.
+
 ### Cost Analysis Options (XLSX)
 
 | Option | Default | Description |
@@ -271,6 +320,12 @@ Optional header row is automatically skipped.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--with-chps` | - | Include CHPS (Container Hardening and Provenance Scanner) scoring |
+
+### KEV Integration
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--with-kevs` | - | Check CVEs against CISA's Known Exploited Vulnerabilities catalog and highlight them in reports |
 
 ### Cache Options
 

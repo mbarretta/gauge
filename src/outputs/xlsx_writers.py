@@ -83,6 +83,7 @@ class ImageComparisonWriter(BaseSectionWriter):
             "Medium",
             "Low",
             "Negligible/Unknown",
+            "KEVs",
         ]
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_blue")
@@ -120,6 +121,7 @@ class ImageComparisonWriter(BaseSectionWriter):
             "medium": xl_rowcol_to_cell(self.row, self.col + 6),
             "low": xl_rowcol_to_cell(self.row, self.col + 7),
             "negligible": xl_rowcol_to_cell(self.row, self.col + 8),
+            "kevs": xl_rowcol_to_cell(self.row, self.col + 9),
         }
 
         for analysis in analyses:
@@ -167,6 +169,13 @@ class ImageComparisonWriter(BaseSectionWriter):
                 self.row, self.col + 8, vuln.negligible, self.formatter.get(format_key)
             )
 
+            # KEV count - use special formatting if > 0
+            kev_count = getattr(analysis, 'kev_count', 0)
+            kev_format = self.formatter.get("body_red") if kev_count > 0 else self.formatter.get(format_key)
+            self.worksheet.write(
+                self.row, self.col + 9, kev_count, kev_format
+            )
+
             self.row += 1
 
         end_cells = {
@@ -178,6 +187,7 @@ class ImageComparisonWriter(BaseSectionWriter):
             "medium": xl_rowcol_to_cell(self.row - 1, self.col + 6),
             "low": xl_rowcol_to_cell(self.row - 1, self.col + 7),
             "negligible": xl_rowcol_to_cell(self.row - 1, self.col + 8),
+            "kevs": xl_rowcol_to_cell(self.row - 1, self.col + 9),
         }
 
         return {"start": start_cells, "end": end_cells}
@@ -192,7 +202,7 @@ class ImageComparisonWriter(BaseSectionWriter):
             num_images: Number of images in the comparison
         """
         # Define metrics that will be summarized
-        all_metrics = ["size", "packages", "cves", "critical", "high", "medium", "low", "negligible"]
+        all_metrics = ["size", "packages", "cves", "critical", "high", "medium", "low", "negligible", "kevs"]
         reduction_metrics = ["size", "packages", "cves"]
         num_columns = len(all_metrics) + 1  # +1 for label column
 
@@ -220,6 +230,7 @@ class ImageComparisonWriter(BaseSectionWriter):
             "Medium",
             "Low",
             "Negligible/Unknown",
+            "KEVs",
         ]
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_blue")

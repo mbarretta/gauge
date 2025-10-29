@@ -197,6 +197,13 @@ Examples:
         help="Include CHPS (Container Hardening and Provenance Scanner) scoring",
     )
 
+    # KEV integration
+    parser.add_argument(
+        "--with-kevs",
+        action="store_true",
+        help="Include CISA Known Exploited Vulnerabilities (KEV) data in reports",
+    )
+
     # Other options
     parser.add_argument(
         "-v",
@@ -351,6 +358,13 @@ def main():
         logger.error("This sets up Docker authentication which works for both local and container execution.")
         sys.exit(1)
 
+    # Load KEV catalog if requested
+    kev_catalog = None
+    if args.with_kevs:
+        logger.info("KEV checking enabled, loading CISA KEV catalog...")
+        kev_catalog = KEVCatalog()
+        kev_catalog.load()
+
     # Initialize scanner
     scanner = VulnerabilityScanner(
         cache=cache,
@@ -359,11 +373,8 @@ def main():
         platform=args.platform,
         check_fresh_images=not args.no_fresh_check,
         with_chps=args.with_chps,
+        kev_catalog=kev_catalog,
     )
-
-    # Load KEV catalog (optional, for enhanced reporting)
-    kev_catalog = KEVCatalog()
-    kev_catalog.load()
 
     # Setup checkpoint/resume
     from core.persistence import ScanResultPersistence

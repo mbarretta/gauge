@@ -43,6 +43,12 @@ def _apply_template_variables(content: str, metrics: dict, customer_name: str) -
         "total_reduction": str(metrics['total_reduction']),
         "images_with_reduction": str(metrics['images_with_reduction']),
         "average_reduction_per_image": f"{metrics['average_reduction_per_image']:.1f}",
+        # KEV-related variables (available when --with-kevs is used)
+        "total_customer_kevs": str(metrics.get('total_customer_kevs', 0)),
+        "total_chainguard_kevs": str(metrics.get('total_chainguard_kevs', 0)),
+        "kev_reduction": str(metrics.get('kev_reduction', 0)),
+        "images_with_customer_kevs": str(metrics.get('images_with_customer_kevs', 0)),
+        "images_with_chainguard_kevs": str(metrics.get('images_with_chainguard_kevs', 0)),
     }
 
     for key, value in template_vars.items():
@@ -199,6 +205,25 @@ class HTMLGenerator:
             chainguard_summary["Low"] += chainguard.vulnerabilities.low
             chainguard_summary["Negligible"] += chainguard.vulnerabilities.negligible
 
+        # KEV metrics (if available)
+        total_customer_kevs = sum(
+            getattr(r.alternative_analysis, 'kev_count', 0) for r in results
+        )
+        total_chainguard_kevs = sum(
+            getattr(r.chainguard_analysis, 'kev_count', 0) for r in results
+        )
+        kev_reduction = total_customer_kevs - total_chainguard_kevs
+
+        # Count images with KEVs
+        images_with_customer_kevs = sum(
+            1 for r in results
+            if getattr(r.alternative_analysis, 'kev_count', 0) > 0
+        )
+        images_with_chainguard_kevs = sum(
+            1 for r in results
+            if getattr(r.chainguard_analysis, 'kev_count', 0) > 0
+        )
+
         return {
             'total_customer_vulns': total_customer_vulns,
             'total_chainguard_vulns': total_cgr_vulns,
@@ -209,6 +234,11 @@ class HTMLGenerator:
             'average_reduction_per_image': round(average_reduction_per_image, 1),
             'alternative_summary': alternative_summary,
             'chainguard_summary': chainguard_summary,
+            'total_customer_kevs': total_customer_kevs,
+            'total_chainguard_kevs': total_chainguard_kevs,
+            'kev_reduction': kev_reduction,
+            'images_with_customer_kevs': images_with_customer_kevs,
+            'images_with_chainguard_kevs': images_with_chainguard_kevs,
         }
 
     def _format_number(self, num: int) -> str:
@@ -478,6 +508,10 @@ class HTMLGenerator:
         if analysis.vulnerabilities.negligible > 0:
             badges.append(f'<span class="vuln-badge vuln-negligible">{self._format_number(analysis.vulnerabilities.negligible)}</span>')
 
+        # Add KEV badge if KEVs are present
+        if hasattr(analysis, 'kev_count') and analysis.kev_count > 0:
+            badges.append(f'<span class="vuln-badge vuln-kev" title="{analysis.kev_count} Known Exploited Vulnerabilities">KEV:{analysis.kev_count}</span>')
+
         if not badges:
             return '<div class="vuln-breakdown-container"><span class="vuln-badge vuln-clean">Clean</span></div>'
 
@@ -512,6 +546,10 @@ class HTMLGenerator:
                     <div class="legend-item">
                         <span class="vuln-badge vuln-clean legend-badge">Clean</span>
                         <span class="legend-label">No Vulnerabilities</span>
+                    </div>
+                    <div class="legend-item">
+                        <span class="vuln-badge vuln-kev legend-badge">KEV</span>
+                        <span class="legend-label">Known Exploited Vulnerability</span>
                     </div>
                 </div>
             </div>
@@ -1219,6 +1257,13 @@ code {
     background: #e8ecef;
     color: #4d5b6a;
     border-color: #b8c2ca;
+}
+
+.vuln-kev {
+    background: #ffe5e5;
+    color: #c41e3a;
+    border-color: #ff6b6b;
+    font-weight: bold;
 }
 
 .vuln-clean {

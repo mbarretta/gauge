@@ -142,6 +142,8 @@ class ScanCache:
                 chps_score=chps_score,
                 used_latest_fallback=data.get("used_latest_fallback", False),
                 original_image=data.get("original_image"),
+                kev_count=data.get("kev_count", 0),
+                kev_cves=data.get("kev_cves", []),
             )
 
             logger.debug(f"Cache hit for {image_name}")
@@ -195,6 +197,11 @@ class ScanCache:
                     "grade": analysis.chps_score.grade,
                     "details": analysis.chps_score.details,
                 }
+
+            # Add KEV data if present
+            if analysis.kev_count > 0:
+                cache_entry["kev_count"] = analysis.kev_count
+                cache_entry["kev_cves"] = analysis.kev_cves
 
             # Atomic write: write to temp file, then rename
             temp_path = cache_path.with_suffix(".tmp")
