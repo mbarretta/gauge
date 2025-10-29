@@ -170,7 +170,7 @@ class ScanResult:
     chainguard_analysis: Optional[ImageAnalysis]
     alternative_analysis: Optional[ImageAnalysis]
     scan_successful: bool = True
-    error_message: str = ""
+    error_message: Optional[str] = None
 
     @property
     def vulnerability_reduction(self) -> Optional[float]:

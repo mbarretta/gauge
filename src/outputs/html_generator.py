@@ -320,14 +320,32 @@ class HTMLGenerator:
             </div>
         </div>"""
 
+    def _generate_fallback_note(self, has_fallback: bool, margin_top: str = "20px") -> str:
+        """
+        Generate fallback note HTML if needed.
+
+        Args:
+            has_fallback: Whether any images used fallback
+            margin_top: CSS margin-top value for the note
+
+        Returns:
+            HTML string for fallback note, or empty string if not needed
+        """
+        if not has_fallback:
+            return ""
+
+        return (
+            f'<p style="margin-top: {margin_top}; font-size: 12px; color: #6b7280;">'
+            '<span style="color: #7545fb; font-weight: bold;">*</span> '
+            'Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison.'
+            '</p>'
+        )
+
     def _build_images_scanned_section(self, image_pairs: list) -> str:
         """Build the images scanned comparison table section."""
         # Check if any Chainguard images used fallback
         has_fallback = any(pair['chainguard'].used_latest_fallback for pair in image_pairs)
-
-        fallback_note = ""
-        if has_fallback:
-            fallback_note = '<p style="margin-top: 20px; font-size: 12px; color: #6b7280;"><span style="color: #7545fb; font-weight: bold;">*</span> Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison.</p>'
+        fallback_note = self._generate_fallback_note(has_fallback, margin_top="20px")
 
         return f"""
         <!-- Image Comparison Table -->
@@ -583,9 +601,7 @@ class HTMLGenerator:
                 </tr>
             """)
 
-        fallback_note = ""
-        if has_fallback:
-            fallback_note = '<p style="margin-top: 10px; font-size: 12px; color: #6b7280;"><span style="color: #7545fb; font-weight: bold;">*</span> Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison.</p>'
+        fallback_note = self._generate_fallback_note(has_fallback, margin_top="10px")
 
         return f"""
         <!-- CHPS Scoring Section -->

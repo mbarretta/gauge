@@ -9,6 +9,7 @@ import json
 import logging
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -100,6 +101,9 @@ class VulnerabilityScanner:
 
         Returns:
             ImageAnalysis with scan results
+
+        Raises:
+            RuntimeError: If image cannot be pulled or scan fails
         """
         original_image = image
         used_fallback = False
@@ -114,17 +118,7 @@ class VulnerabilityScanner:
                 )
             if not pull_successful:
                 logger.error(f"Failed to pull image {original_image} - cannot scan")
-                # Return empty analysis on pull failure
-                return ImageAnalysis(
-                    name=original_image,
-                    size_mb=0.0,
-                    package_count=0,
-                    vulnerabilities=VulnerabilityCount(),
-                    scan_timestamp=datetime.now(timezone.utc),
-                    digest=None,
-                    used_latest_fallback=used_fallback,
-                    original_image=original_image if used_fallback else None,
-                )
+                raise RuntimeError(f"Failed to pull image {original_image} and all fallback strategies failed")
 
         # Get image digest for caching
         digest = self.docker.get_image_digest(image)
@@ -136,15 +130,8 @@ class VulnerabilityScanner:
             logger.info(f"✓ {image} (cached)")
             # If we used fallback, update the cached result to reflect that
             if used_fallback:
-                cached = ImageAnalysis(
-                    name=cached.name,
-                    size_mb=cached.size_mb,
-                    package_count=cached.package_count,
-                    vulnerabilities=cached.vulnerabilities,
-                    scan_timestamp=cached.scan_timestamp,
-                    digest=cached.digest,
-                    cache_hit=cached.cache_hit,
-                    chps_score=cached.chps_score,
+                cached = replace(
+                    cached,
                     used_latest_fallback=True,
                     original_image=original_image,
                 )
@@ -200,17 +187,7 @@ class VulnerabilityScanner:
 
         except Exception as e:
             logger.error(f"Failed to scan {image}: {e}")
-            # Return empty analysis on failure
-            return ImageAnalysis(
-                name=image,
-                size_mb=0.0,
-                package_count=0,
-                vulnerabilities=VulnerabilityCount(),
-                scan_timestamp=datetime.now(timezone.utc),
-                digest=digest,
-                used_latest_fallback=used_fallback,
-                original_image=original_image if used_fallback else None,
-            )
+            raise
 
     def _run_syft(self, image: str) -> tuple[int, str]:
         """
@@ -319,81 +296,6 @@ class VulnerabilityScanner:
             negligible=counts[SeverityLevel.NEGLIGIBLE.value],
         )
 
-    def _is_chainguard_image(self, image: str) -> bool:
-        """
-        Check if an image is from Chainguard registry.
-
-        Args:
-            image: Image reference to check
-
-        Returns:
-            True if image is from cgr.dev, False otherwise
-        """
-        return "cgr.dev" in image
-
-    def _check_and_fallback_if_old(self, image: str) -> tuple[str, bool, Optional[str]]:
-        """
-        Check if Chainguard image is older than 30 days and fallback to :latest if needed.
-
-        Args:
-            image: Chainguard image reference to check
-
-        Returns:
-            Tuple of (image_to_use, used_fallback, original_image)
-        """
-        from dateutil import parser as date_parser
-        from datetime import timedelta
-
-        try:
-            # Pull the image first to ensure we have it locally
-            pulled_image = image
-            if self.check_fresh_images:
-                pulled_image, _, pull_success = self.docker.ensure_fresh_image(image, self.platform)
-                # Note: We ignore the fallback from ensure_fresh_image here because
-                # this method has its own age-based fallback logic for Chainguard images
-                if not pull_success:
-                    logger.warning(f"Failed to pull {image} for age check, using as-is")
-                    return image, False, None
-
-            # Get the creation date
-            created_str = self.docker.get_image_created_date(pulled_image)
-            if not created_str:
-                logger.warning(f"Could not get creation date for {pulled_image}, using as-is")
-                return pulled_image, False, None
-
-            # Parse the creation date
-            created_date = date_parser.parse(created_str)
-            now = datetime.now(timezone.utc)
-
-            # Make created_date timezone-aware if it isn't
-            if created_date.tzinfo is None:
-                created_date = created_date.replace(tzinfo=timezone.utc)
-
-            # Calculate age in days
-            age_days = (now - created_date).days
-
-            logger.debug(f"Image {pulled_image} is {age_days} days old")
-
-            # If older than 30 days, fallback to :latest
-            if age_days > 30:
-                # Extract the base image without tag
-                if ":" in pulled_image:
-                    base_image = pulled_image.rsplit(":", 1)[0]
-                    latest_image = f"{base_image}:latest"
-                    logger.warning(
-                        f"Image {pulled_image} is {age_days} days old (> 30 days), "
-                        f"falling back to {latest_image}"
-                    )
-                    return latest_image, True, image
-                else:
-                    # No tag specified, already using latest
-                    return pulled_image, False, None
-
-            return pulled_image, False, None
-
-        except Exception as e:
-            logger.warning(f"Error checking image age for {image}: {e}, using as-is")
-            return image, False, None
 
     def scan_image_pair(self, pair: ImagePair) -> ScanResult:
         """
@@ -409,34 +311,7 @@ class VulnerabilityScanner:
 
         try:
             alternative_analysis = self.scan_image(pair.alternative_image)
-
-            # For Chainguard images, check if image is older than 30 days
-            # and fallback to :latest if needed
-            chainguard_image = pair.chainguard_image
-            used_fallback = False
-            original_image = None
-
-            if self._is_chainguard_image(chainguard_image):
-                chainguard_image, used_fallback, original_image = self._check_and_fallback_if_old(
-                    chainguard_image
-                )
-
-            chainguard_analysis = self.scan_image(chainguard_image)
-
-            # Update the analysis with fallback information if needed
-            if used_fallback:
-                chainguard_analysis = ImageAnalysis(
-                    name=chainguard_analysis.name,
-                    size_mb=chainguard_analysis.size_mb,
-                    package_count=chainguard_analysis.package_count,
-                    vulnerabilities=chainguard_analysis.vulnerabilities,
-                    scan_timestamp=chainguard_analysis.scan_timestamp,
-                    digest=chainguard_analysis.digest,
-                    cache_hit=chainguard_analysis.cache_hit,
-                    chps_score=chainguard_analysis.chps_score,
-                    used_latest_fallback=True,
-                    original_image=original_image,
-                )
+            chainguard_analysis = self.scan_image(pair.chainguard_image)
 
             return ScanResult(
                 pair=pair,

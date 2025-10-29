@@ -136,9 +136,8 @@ def validate_customer_name(name: str) -> str:
     name = name.strip()
 
     # Prevent path traversal and injection attempts
-    # Note: & is allowed as it's common in company names (e.g., "AT&T", "P&G")
-    # Filenames are sanitized separately for filesystem safety
-    if any(char in name for char in ["/", "\\", "<", ">", '"', "'", ";", "|"]):
+    # Customer names are used in filenames, so restrict special characters
+    if any(char in name for char in ["/", "\\", "<", ">", '"', "'", ";", "|", "&"]):
         raise ValidationException(
             "Customer name contains invalid characters",
             "customer_name"
