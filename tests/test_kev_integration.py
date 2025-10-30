@@ -240,3 +240,58 @@ class TestKEVCaching:
         assert cached is not None
         assert cached.kev_count == 0
         assert cached.kev_cves == []
+
+    def test_cache_invalidation_when_kev_required(self, cache_dir):
+        """Test cache miss when KEV data is required but not present."""
+        cache = ScanCache(cache_dir=cache_dir, enabled=True)
+
+        # Store analysis without KEV data (old cache entry)
+        analysis = ImageAnalysis(
+            name="nginx:1.25",
+            size_mb=150.0,
+            package_count=200,
+            vulnerabilities=VulnerabilityCount(
+                total=5, critical=0, high=1, medium=2, low=2, negligible=0
+            ),
+            scan_timestamp=datetime.now(timezone.utc),
+            digest="sha256:oldcache",
+            kev_count=0,
+            kev_cves=[],
+        )
+
+        cache.put(analysis)
+
+        # Request with require_kevs=False should return cached result
+        cached = cache.get("nginx:1.25", "sha256:oldcache", require_kevs=False)
+        assert cached is not None
+        assert cached.kev_count == 0
+
+        # Request with require_kevs=True should return None (cache miss)
+        cached_with_kev_required = cache.get("nginx:1.25", "sha256:oldcache", require_kevs=True)
+        assert cached_with_kev_required is None
+
+    def test_cache_hit_when_kev_data_present(self, cache_dir):
+        """Test cache hit when KEV data is required and present."""
+        cache = ScanCache(cache_dir=cache_dir, enabled=True)
+
+        # Store analysis WITH KEV data
+        analysis = ImageAnalysis(
+            name="nginx:1.25",
+            size_mb=150.0,
+            package_count=200,
+            vulnerabilities=VulnerabilityCount(
+                total=5, critical=0, high=1, medium=2, low=2, negligible=0
+            ),
+            scan_timestamp=datetime.now(timezone.utc),
+            digest="sha256:withkev",
+            kev_count=2,
+            kev_cves=["CVE-2023-44487", "CVE-2025-27363"],
+        )
+
+        cache.put(analysis)
+
+        # Request with require_kevs=True should return cached result
+        cached = cache.get("nginx:1.25", "sha256:withkev", require_kevs=True)
+        assert cached is not None
+        assert cached.kev_count == 2
+        assert cached.kev_cves == ["CVE-2023-44487", "CVE-2025-27363"]

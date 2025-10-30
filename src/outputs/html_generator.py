@@ -36,19 +36,21 @@ def _apply_template_variables(content: str, metrics: dict, customer_name: str) -
     """
     template_vars = {
         "customer_name": customer_name,
-        "images_scanned": str(metrics['images_scanned']),
-        "total_customer_vulns": str(metrics['total_customer_vulns']),
-        "total_chainguard_vulns": str(metrics['total_chainguard_vulns']),
+        "images_scanned": str(metrics["images_scanned"]),
+        "total_customer_vulns": str(metrics["total_customer_vulns"]),
+        "total_chainguard_vulns": str(metrics["total_chainguard_vulns"]),
         "reduction_percentage": f"{metrics['reduction_percentage']:.1f}%",
-        "total_reduction": str(metrics['total_reduction']),
-        "images_with_reduction": str(metrics['images_with_reduction']),
+        "total_reduction": str(metrics["total_reduction"]),
+        "images_with_reduction": str(metrics["images_with_reduction"]),
         "average_reduction_per_image": f"{metrics['average_reduction_per_image']:.1f}",
         # KEV-related variables (available when --with-kevs is used)
-        "total_customer_kevs": str(metrics.get('total_customer_kevs', 0)),
-        "total_chainguard_kevs": str(metrics.get('total_chainguard_kevs', 0)),
-        "kev_reduction": str(metrics.get('kev_reduction', 0)),
-        "images_with_customer_kevs": str(metrics.get('images_with_customer_kevs', 0)),
-        "images_with_chainguard_kevs": str(metrics.get('images_with_chainguard_kevs', 0)),
+        "total_customer_kevs": str(metrics.get("total_customer_kevs", 0)),
+        "total_chainguard_kevs": str(metrics.get("total_chainguard_kevs", 0)),
+        "kev_reduction": str(metrics.get("kev_reduction", 0)),
+        "images_with_customer_kevs": str(metrics.get("images_with_customer_kevs", 0)),
+        "images_with_chainguard_kevs": str(
+            metrics.get("images_with_chainguard_kevs", 0)
+        ),
     }
 
     for key, value in template_vars.items():
@@ -99,8 +101,7 @@ class HTMLGenerator:
         # Validate config
         if not isinstance(config, HTMLGeneratorConfig):
             raise OutputException(
-                "html",
-                f"Expected HTMLGeneratorConfig, got {type(config).__name__}"
+                "html", f"Expected HTMLGeneratorConfig, got {type(config).__name__}"
             )
 
         config.validate()
@@ -117,23 +118,21 @@ class HTMLGenerator:
 
         # Load executive summary and appendix
         exec_summary = self._load_exec_summary(
-            config.exec_summary_path,
-            metrics,
-            config.customer_name
+            config.exec_summary_path, metrics, config.customer_name
         )
         appendix_content = self._load_appendix(
-            config.appendix_path,
-            metrics,
-            config.customer_name
+            config.appendix_path, metrics, config.customer_name
         )
 
         # Build image pairs for table
         image_pairs = []
         for result in successful:
-            image_pairs.append({
-                'customer': result.alternative_analysis,
-                'chainguard': result.chainguard_analysis
-            })
+            image_pairs.append(
+                {
+                    "customer": result.alternative_analysis,
+                    "chainguard": result.chainguard_analysis,
+                }
+            )
 
         # Get CSS
         css_content = self._get_embedded_css()
@@ -152,9 +151,11 @@ class HTMLGenerator:
         )
 
         # Clean up chainguard image references
-        html_content = re.sub(r'cgr\.dev/chainguard-private/([^<\s]+)', r'\1', html_content)
-        html_content = re.sub(r'cgr\.dev/chainguard/([^<\s]+)', r'\1', html_content)
-        html_content = re.sub(r'cgr\.dev/cg/([^<\s]+)', r'\1', html_content)
+        html_content = re.sub(
+            r"cgr\.dev/chainguard-private/([^<\s]+)", r"\1", html_content
+        )
+        html_content = re.sub(r"cgr\.dev/chainguard/([^<\s]+)", r"\1", html_content)
+        html_content = re.sub(r"cgr\.dev/cg/([^<\s]+)", r"\1", html_content)
 
         # Write to file
         with open(output_path, "w", encoding="utf-8") as f:
@@ -178,13 +179,17 @@ class HTMLGenerator:
 
         # Count images with reduction (where Chainguard has fewer CVEs)
         images_with_reduction = sum(
-            1 for r in results
-            if r.chainguard_analysis.vulnerabilities.total < r.alternative_analysis.vulnerabilities.total
+            1
+            for r in results
+            if r.chainguard_analysis.vulnerabilities.total
+            < r.alternative_analysis.vulnerabilities.total
         )
 
         # Calculate average reduction per image
         images_scanned = len(results)
-        average_reduction_per_image = total_reduction / images_scanned if images_scanned > 0 else 0.0
+        average_reduction_per_image = (
+            total_reduction / images_scanned if images_scanned > 0 else 0.0
+        )
 
         # Per-severity summary
         alternative_summary = {severity: 0 for severity in self.SEVERITY_ORDER}
@@ -208,38 +213,36 @@ class HTMLGenerator:
 
         # KEV metrics (if available)
         total_customer_kevs = sum(
-            getattr(r.alternative_analysis, 'kev_count', 0) for r in results
+            getattr(r.alternative_analysis, "kev_count", 0) for r in results
         )
         total_chainguard_kevs = sum(
-            getattr(r.chainguard_analysis, 'kev_count', 0) for r in results
+            getattr(r.chainguard_analysis, "kev_count", 0) for r in results
         )
         kev_reduction = total_customer_kevs - total_chainguard_kevs
 
         # Count images with KEVs
         images_with_customer_kevs = sum(
-            1 for r in results
-            if getattr(r.alternative_analysis, 'kev_count', 0) > 0
+            1 for r in results if getattr(r.alternative_analysis, "kev_count", 0) > 0
         )
         images_with_chainguard_kevs = sum(
-            1 for r in results
-            if getattr(r.chainguard_analysis, 'kev_count', 0) > 0
+            1 for r in results if getattr(r.chainguard_analysis, "kev_count", 0) > 0
         )
 
         return {
-            'total_customer_vulns': total_customer_vulns,
-            'total_chainguard_vulns': total_cgr_vulns,
-            'total_reduction': total_reduction,
-            'reduction_percentage': round(reduction_percentage, 2),
-            'images_scanned': images_scanned,
-            'images_with_reduction': images_with_reduction,
-            'average_reduction_per_image': round(average_reduction_per_image, 1),
-            'alternative_summary': alternative_summary,
-            'chainguard_summary': chainguard_summary,
-            'total_customer_kevs': total_customer_kevs,
-            'total_chainguard_kevs': total_chainguard_kevs,
-            'kev_reduction': kev_reduction,
-            'images_with_customer_kevs': images_with_customer_kevs,
-            'images_with_chainguard_kevs': images_with_chainguard_kevs,
+            "total_customer_vulns": total_customer_vulns,
+            "total_chainguard_vulns": total_cgr_vulns,
+            "total_reduction": total_reduction,
+            "reduction_percentage": round(reduction_percentage, 2),
+            "images_scanned": images_scanned,
+            "images_with_reduction": images_with_reduction,
+            "average_reduction_per_image": round(average_reduction_per_image, 1),
+            "alternative_summary": alternative_summary,
+            "chainguard_summary": chainguard_summary,
+            "total_customer_kevs": total_customer_kevs,
+            "total_chainguard_kevs": total_chainguard_kevs,
+            "kev_reduction": kev_reduction,
+            "images_with_customer_kevs": images_with_customer_kevs,
+            "images_with_chainguard_kevs": images_with_chainguard_kevs,
         }
 
     def _format_number(self, num: int) -> str:
@@ -256,7 +259,7 @@ class HTMLGenerator:
         appendix_content: Optional[str],
         results: list[ScanResult],
         platform: str = "linux/amd64",
-        kev_catalog: Optional['KEVCatalog'] = None,
+        kev_catalog: Optional["KEVCatalog"] = None,
     ) -> str:
         """Build complete HTML document."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -268,7 +271,9 @@ class HTMLGenerator:
         images_scanned_section = self._build_images_scanned_section(image_pairs)
         chps_section = self._build_chps_section_if_needed(results)
         kev_section = self._build_kev_section_if_needed(results, kev_catalog)
-        footer_section = self._build_footer_section(customer_name, timestamp, appendix_content)
+        footer_section = self._build_footer_section(
+            customer_name, timestamp, appendix_content
+        )
 
         return f"""<!DOCTYPE html>
 <html lang="en">
@@ -320,10 +325,10 @@ class HTMLGenerator:
             <h2>CVE Reduction Analysis</h2>
             <div style="text-align: center; margin-bottom: 30px;">
                 <div class="total-box reduction-box" style="display: block; margin: 0 auto 20px auto; width: 300px;">
-                    {metrics['reduction_percentage']}%
+                    {metrics["reduction_percentage"]}%
                     <span>CVE Reduction</span>
                 </div>
-                <p style="text-align: center; margin: 0; font-size: 16px; color: var(--cg-primary);"><strong>{self._format_number(metrics['total_reduction'])}</strong> fewer vulnerabilities with Chainguard images</p>
+                <p style="text-align: center; margin: 0; font-size: 16px; color: var(--cg-primary);"><strong>{self._format_number(metrics["total_reduction"])}</strong> fewer vulnerabilities with Chainguard images</p>
             </div>
 
             <!-- Overview Section within CVE Reduction Analysis -->
@@ -333,10 +338,10 @@ class HTMLGenerator:
                     <div class="summary-column-content">
                         <h2>Your Images</h2>
                         <div class="total-box customer-total">
-                            {self._format_number(metrics['total_customer_vulns'])}
+                            {self._format_number(metrics["total_customer_vulns"])}
                             <span>Total Vulnerabilities</span>
                         </div>
-                        {self._generate_severity_table(metrics['alternative_summary'])}
+                        {self._generate_severity_table(metrics["alternative_summary"])}
                     </div>
                 </div>
 
@@ -345,16 +350,18 @@ class HTMLGenerator:
                     <div class="summary-column-content">
                         <h2>Chainguard Images</h2>
                         <div class="total-box chainguard-total">
-                            {self._format_number(metrics['total_chainguard_vulns'])}
+                            {self._format_number(metrics["total_chainguard_vulns"])}
                             <span>Total Vulnerabilities</span>
                         </div>
-                        {self._generate_severity_table(metrics['chainguard_summary'])}
+                        {self._generate_severity_table(metrics["chainguard_summary"])}
                     </div>
                 </div>
             </div>
         </div>"""
 
-    def _generate_fallback_note(self, has_fallback: bool, margin_top: str = "20px") -> str:
+    def _generate_fallback_note(
+        self, has_fallback: bool, margin_top: str = "20px"
+    ) -> str:
         """
         Generate fallback note HTML if needed.
 
@@ -371,14 +378,16 @@ class HTMLGenerator:
         return (
             f'<p style="margin-top: {margin_top}; font-size: 12px; color: #6b7280;">'
             '<span style="color: #7545fb; font-weight: bold;">*</span> '
-            'Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison.'
-            '</p>'
+            "Image was not built in the last 30 days; <code>:latest</code> tag was used for comparison."
+            "</p>"
         )
 
     def _build_images_scanned_section(self, image_pairs: list) -> str:
         """Build the images scanned comparison table section."""
         # Check if any Chainguard images used fallback
-        has_fallback = any(pair['chainguard'].used_latest_fallback for pair in image_pairs)
+        has_fallback = any(
+            pair["chainguard"].used_latest_fallback for pair in image_pairs
+        )
         fallback_note = self._generate_fallback_note(has_fallback, margin_top="20px")
 
         return f"""
@@ -407,8 +416,8 @@ class HTMLGenerator:
     def _build_chps_section_if_needed(self, results: list[ScanResult]) -> str:
         """Build CHPS section if any results have CHPS scores."""
         has_chps = any(
-            (r.chainguard_analysis and r.chainguard_analysis.chps_score) or
-            (r.alternative_analysis and r.alternative_analysis.chps_score)
+            (r.chainguard_analysis and r.chainguard_analysis.chps_score)
+            or (r.alternative_analysis and r.alternative_analysis.chps_score)
             for r in results
         )
 
@@ -418,7 +427,9 @@ class HTMLGenerator:
 
         return ""
 
-    def _build_footer_section(self, customer_name: str, timestamp: str, appendix_content: Optional[str]) -> str:
+    def _build_footer_section(
+        self, customer_name: str, timestamp: str, appendix_content: Optional[str]
+    ) -> str:
         """Build the footer section, optionally with appendix."""
         footer_text = f"This report is {customer_name} & Chainguard Confidential | Generated on {timestamp}"
 
@@ -447,12 +458,12 @@ class HTMLGenerator:
         for severity in self.SEVERITY_ORDER:
             count = summary.get(severity, 0)
             severity_lower = severity.lower()
-            rows.append(f'''                                <tr>
+            rows.append(f"""                                <tr>
                                     <td><span class="severity-indicator {severity_lower}"></span>{severity}</td>
                                     <td class="severity-count">{self._format_number(count)}</td>
-                                </tr>''')
+                                </tr>""")
 
-        return f'''<table class="summary-table">
+        return f"""<table class="summary-table">
                             <thead>
                                 <tr>
                                     <th>Severity</th>
@@ -462,14 +473,14 @@ class HTMLGenerator:
                             <tbody>
 {chr(10).join(rows)}
                             </tbody>
-                        </table>'''
+                        </table>"""
 
     def _generate_comparison_table_rows(self, image_pairs: list) -> str:
         """Generate HTML table rows for image comparisons."""
         rows = []
         for pair in image_pairs:
-            customer = pair['customer']
-            chainguard = pair['chainguard']
+            customer = pair["customer"]
+            chainguard = pair["chainguard"]
 
             # Format vulnerability breakdowns with badges
             customer_breakdown = self._format_vulnerability_breakdown(customer)
@@ -478,7 +489,9 @@ class HTMLGenerator:
             # Add asterisk if Chainguard image used fallback to :latest
             chainguard_name = chainguard.name
             if chainguard.used_latest_fallback:
-                chainguard_name += ' <span style="color: #7545fb; font-weight: bold;">*</span>'
+                chainguard_name += (
+                    ' <span style="color: #7545fb; font-weight: bold;">*</span>'
+                )
 
             rows.append(f"""
                 <tr class="image-comparison-row">
@@ -492,7 +505,7 @@ class HTMLGenerator:
                     <td class="vulnerability-count">{chainguard_breakdown}</td>
                 </tr>
             """)
-        return ''.join(rows)
+        return "".join(rows)
 
     def _format_vulnerability_breakdown(self, analysis: ImageAnalysis) -> str:
         """Format vulnerability count with severity breakdown badges."""
@@ -502,19 +515,31 @@ class HTMLGenerator:
         # Create badges for each severity with count > 0
         badges = []
         if analysis.vulnerabilities.critical > 0:
-            badges.append(f'<span class="vuln-badge vuln-critical">{self._format_number(analysis.vulnerabilities.critical)}</span>')
+            badges.append(
+                f'<span class="vuln-badge vuln-critical">{self._format_number(analysis.vulnerabilities.critical)}</span>'
+            )
         if analysis.vulnerabilities.high > 0:
-            badges.append(f'<span class="vuln-badge vuln-high">{self._format_number(analysis.vulnerabilities.high)}</span>')
+            badges.append(
+                f'<span class="vuln-badge vuln-high">{self._format_number(analysis.vulnerabilities.high)}</span>'
+            )
         if analysis.vulnerabilities.medium > 0:
-            badges.append(f'<span class="vuln-badge vuln-medium">{self._format_number(analysis.vulnerabilities.medium)}</span>')
+            badges.append(
+                f'<span class="vuln-badge vuln-medium">{self._format_number(analysis.vulnerabilities.medium)}</span>'
+            )
         if analysis.vulnerabilities.low > 0:
-            badges.append(f'<span class="vuln-badge vuln-low">{self._format_number(analysis.vulnerabilities.low)}</span>')
+            badges.append(
+                f'<span class="vuln-badge vuln-low">{self._format_number(analysis.vulnerabilities.low)}</span>'
+            )
         if analysis.vulnerabilities.negligible > 0:
-            badges.append(f'<span class="vuln-badge vuln-negligible">{self._format_number(analysis.vulnerabilities.negligible)}</span>')
+            badges.append(
+                f'<span class="vuln-badge vuln-negligible">{self._format_number(analysis.vulnerabilities.negligible)}</span>'
+            )
 
         # Add KEV badge if KEVs are present
-        if hasattr(analysis, 'kev_count') and analysis.kev_count > 0:
-            badges.append(f'<span class="vuln-badge vuln-kev" title="{analysis.kev_count} Known Exploited Vulnerabilities">KEV:{analysis.kev_count}</span>')
+        if hasattr(analysis, "kev_count") and analysis.kev_count > 0:
+            badges.append(
+                f'<span class="vuln-badge vuln-kev" title="{analysis.kev_count} Known Exploited Vulnerabilities">KEV:{analysis.kev_count}</span>'
+            )
 
         if not badges:
             return '<div class="vuln-breakdown-container"><span class="vuln-badge vuln-clean">Clean</span></div>'
@@ -562,7 +587,7 @@ class HTMLGenerator:
     def _get_grade_badge_class(self, grade: str) -> str:
         """Get CSS class for CHPS grade badge."""
         grade_upper = grade.upper()
-        return GRADE_TO_CSS_CLASS.get(grade_upper, "vuln-badge vuln-critical")
+        return GRADE_TO_CSS_CLASS.get(grade_upper, "vuln-critical")
 
     def _format_chps_score_display(self, chps_score) -> str:
         """Format CHPS score for display with styled grade badge and component breakdown."""
@@ -578,7 +603,7 @@ class HTMLGenerator:
         component_labels = {
             "minimalism": "Minimalism",
             "provenance": "Provenance",
-            "configuration": "Configuration"
+            "configuration": "Configuration",
         }
 
         for component in component_order:
@@ -591,18 +616,20 @@ class HTMLGenerator:
                 grade_class = self._get_grade_badge_class(comp_grade)
                 components.append(
                     f'<div style="width: 250px; display: flex; justify-content: space-between; align-items: center;">'
-                    f'<span>{component_labels[component]}:</span>'
-                    f'<span class="{grade_class}">{comp_grade}</span>'
-                    f'</div>'
+                    f"<span>{component_labels[component]}:</span>"
+                    f'<span class="vuln-badge {grade_class}">{comp_grade}</span>'
+                    f"</div>"
                 )
 
         # Build the overall grade (larger)
         overall_grade_class = self._get_grade_badge_class(chps_score.grade)
+        # Overall uses chps-overall-badge (not vuln-badge)
+        overall_classes = f"chps-overall-badge {overall_grade_class}"
         overall = (
             f'<div style="width: 250px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">'
-            f'<strong>Overall:</strong>'
-            f'<span class="{overall_grade_class}" style="font-size: 1.2em; padding: 4px 6px;">{chps_score.grade}</span>'
-            f'</div>'
+            f"<strong>Overall:</strong>"
+            f'<span class="{overall_classes}" style="font-size: 1.2em; padding: 4px 6px;">{chps_score.grade}</span>'
+            f"</div>"
         )
 
         # Combine all components
@@ -617,23 +644,31 @@ class HTMLGenerator:
             chainguard = result.chainguard_analysis
 
             # Format CHPS displays for both images
-            alternative_score = alternative.chps_score if alternative and alternative.chps_score else None
+            alternative_score = (
+                alternative.chps_score
+                if alternative and alternative.chps_score
+                else None
+            )
             alternative_display = self._format_chps_score_display(alternative_score)
 
-            chainguard_score = chainguard.chps_score if chainguard and chainguard.chps_score else None
+            chainguard_score = (
+                chainguard.chps_score if chainguard and chainguard.chps_score else None
+            )
             chainguard_display = self._format_chps_score_display(chainguard_score)
 
             # Add asterisk if Chainguard image used fallback to :latest
-            chainguard_name = chainguard.name if chainguard else 'N/A'
+            chainguard_name = chainguard.name if chainguard else "N/A"
             if chainguard and chainguard.used_latest_fallback:
-                chainguard_name += ' <span style="color: #7545fb; font-weight: bold;">*</span>'
+                chainguard_name += (
+                    ' <span style="color: #7545fb; font-weight: bold;">*</span>'
+                )
                 has_fallback = True
 
             # Build single row with image pair
             rows.append(f"""
                 <tr class="image-comparison-row">
                     <td class="image-name-cell">
-                        <code class="image-name">{alternative.name if alternative else 'N/A'}</code>
+                        <code class="image-name">{alternative.name if alternative else "N/A"}</code>
                     </td>
                     <td class="vulnerability-count">{alternative_display}</td>
                     <td class="image-name-cell">
@@ -670,7 +705,9 @@ class HTMLGenerator:
         </div>
 """
 
-    def _build_kev_section_if_needed(self, results: list[ScanResult], kev_catalog: Optional['KEVCatalog']) -> str:
+    def _build_kev_section_if_needed(
+        self, results: list[ScanResult], kev_catalog: Optional["KEVCatalog"]
+    ) -> str:
         """Build KEV section if KEV catalog is provided (always shows table when --with-kevs is used)."""
         if not kev_catalog:
             return ""
@@ -679,14 +716,16 @@ class HTMLGenerator:
         logger.info("KEV checking enabled, adding KEV section to HTML report")
         return self._generate_kev_section(results, kev_catalog)
 
-    def _generate_kev_section(self, results: list[ScanResult], kev_catalog: 'KEVCatalog') -> str:
+    def _generate_kev_section(
+        self, results: list[ScanResult], kev_catalog: "KEVCatalog"
+    ) -> str:
         """Generate KEV details section with table of all found KEVs."""
         rows = []
 
         for result in results:
             # Check alternative/customer image
             alt_analysis = result.alternative_analysis
-            if alt_analysis and getattr(alt_analysis, 'kev_cves', []):
+            if alt_analysis and getattr(alt_analysis, "kev_cves", []):
                 for cve_id in alt_analysis.kev_cves:
                     kev_entry = kev_catalog.get_kev_entry(cve_id)
                     if kev_entry:
@@ -705,7 +744,7 @@ class HTMLGenerator:
 
             # Check Chainguard image
             cg_analysis = result.chainguard_analysis
-            if cg_analysis and getattr(cg_analysis, 'kev_cves', []):
+            if cg_analysis and getattr(cg_analysis, "kev_cves", []):
                 for cve_id in cg_analysis.kev_cves:
                     kev_entry = kev_catalog.get_kev_entry(cve_id)
                     if kev_entry:
@@ -760,7 +799,9 @@ class HTMLGenerator:
         </div>
 """
 
-    def _load_exec_summary(self, path: Optional[Path], metrics: dict, customer_name: str) -> Optional[str]:
+    def _load_exec_summary(
+        self, path: Optional[Path], metrics: dict, customer_name: str
+    ) -> Optional[str]:
         """Load and format executive summary with template variable substitution."""
         if not path or not path.exists():
             return None
@@ -780,7 +821,9 @@ class HTMLGenerator:
             logger.warning(f"Could not load executive summary: {e}")
             return None
 
-    def _load_appendix(self, path: Optional[Path], metrics: dict, customer_name: str) -> Optional[str]:
+    def _load_appendix(
+        self, path: Optional[Path], metrics: dict, customer_name: str
+    ) -> Optional[str]:
         """Load and format appendix with template variable substitution."""
         if not path or not path.exists():
             return None
@@ -1320,6 +1363,7 @@ code {
     min-width: 20px;
     justify-content: center;
     line-height: 1;
+    margin-right: 2px;
 }
 
 /* Severity-specific badge colors with new color scheme */
@@ -1376,7 +1420,7 @@ code {
 
 .kev-link {
     color: #c41e3a;
-    text-decoration: none;
+    text-decoration: underline;
     font-weight: 600;
 }
 
@@ -1390,6 +1434,23 @@ code {
     color: white;
     border-color: #10b981;
     font-weight: 700;
+}
+
+.chps-overall-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    padding: 3px 4px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    border: 1px solid;
+    white-space: nowrap;
+    min-width: 20px;
+    justify-content: center;
+    line-height: 1;
 }
 
 /* Vulnerability legend styling */

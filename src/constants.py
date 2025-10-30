@@ -113,12 +113,12 @@ CHAINGUARD_LOGO_PATH = "resources/linky-white.png"
 # ============================================================================
 
 GRADE_TO_CSS_CLASS = {
-    'A+': 'vuln-badge vuln-negligible',
-    'A': 'vuln-badge vuln-negligible',
-    'B': 'vuln-badge vuln-low',
-    'C': 'vuln-badge vuln-medium',
-    'D': 'vuln-badge vuln-high',
-    'E': 'vuln-badge vuln-critical',
-    'F': 'vuln-badge vuln-critical',
+    'A+': 'vuln-negligible',
+    'A': 'vuln-negligible',
+    'B': 'vuln-low',
+    'C': 'vuln-medium',
+    'D': 'vuln-high',
+    'E': 'vuln-critical',
+    'F': 'vuln-critical',
 }
-"""Mapping of CHPS letter grades to CSS classes for styling."""
+"""Mapping of CHPS letter grades to CSS color classes (without vuln-badge)."""

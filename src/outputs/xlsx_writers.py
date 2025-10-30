@@ -68,7 +68,10 @@ class ImageComparisonWriter(BaseSectionWriter):
         """
         # Platform info row
         self.worksheet.write(
-            self.row, self.col, f"Platform: {platform}", self.formatter.get("body_lightgrey")
+            self.row,
+            self.col,
+            f"Platform: {platform}",
+            self.formatter.get("body_lightgrey"),
         )
         self.row += 2  # Skip a row for spacing
 
@@ -83,7 +86,6 @@ class ImageComparisonWriter(BaseSectionWriter):
             "Medium",
             "Low",
             "Negligible/Unknown",
-            "KEVs",
         ]
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_blue")
@@ -97,7 +99,9 @@ class ImageComparisonWriter(BaseSectionWriter):
         chainguard_cells = self._write_image_data(chainguard_analyses, "body_green")
 
         # Roll-up metrics section
-        self._write_rollup_section(alternative_cells, chainguard_cells, len(alternative_analyses))
+        self._write_rollup_section(
+            alternative_cells, chainguard_cells, len(alternative_analyses)
+        )
 
         return alternative_cells, chainguard_cells, self.row
 
@@ -121,7 +125,6 @@ class ImageComparisonWriter(BaseSectionWriter):
             "medium": xl_rowcol_to_cell(self.row, self.col + 6),
             "low": xl_rowcol_to_cell(self.row, self.col + 7),
             "negligible": xl_rowcol_to_cell(self.row, self.col + 8),
-            "kevs": xl_rowcol_to_cell(self.row, self.col + 9),
         }
 
         for analysis in analyses:
@@ -134,10 +137,16 @@ class ImageComparisonWriter(BaseSectionWriter):
 
             # Size and packages
             self.worksheet.write(
-                self.row, self.col + 1, int(analysis.size_mb), self.formatter.get(format_key)
+                self.row,
+                self.col + 1,
+                int(analysis.size_mb),
+                self.formatter.get(format_key),
             )
             self.worksheet.write(
-                self.row, self.col + 2, analysis.package_count, self.formatter.get(format_key)
+                self.row,
+                self.col + 2,
+                analysis.package_count,
+                self.formatter.get(format_key),
             )
 
             # CVE formula (sum of severities)
@@ -169,13 +178,6 @@ class ImageComparisonWriter(BaseSectionWriter):
                 self.row, self.col + 8, vuln.negligible, self.formatter.get(format_key)
             )
 
-            # KEV count - use special formatting if > 0
-            kev_count = getattr(analysis, 'kev_count', 0)
-            kev_format = self.formatter.get("body_red") if kev_count > 0 else self.formatter.get(format_key)
-            self.worksheet.write(
-                self.row, self.col + 9, kev_count, kev_format
-            )
-
             self.row += 1
 
         end_cells = {
@@ -187,7 +189,6 @@ class ImageComparisonWriter(BaseSectionWriter):
             "medium": xl_rowcol_to_cell(self.row - 1, self.col + 6),
             "low": xl_rowcol_to_cell(self.row - 1, self.col + 7),
             "negligible": xl_rowcol_to_cell(self.row - 1, self.col + 8),
-            "kevs": xl_rowcol_to_cell(self.row - 1, self.col + 9),
         }
 
         return {"start": start_cells, "end": end_cells}
@@ -202,7 +203,16 @@ class ImageComparisonWriter(BaseSectionWriter):
             num_images: Number of images in the comparison
         """
         # Define metrics that will be summarized
-        all_metrics = ["size", "packages", "cves", "critical", "high", "medium", "low", "negligible", "kevs"]
+        all_metrics = [
+            "size",
+            "packages",
+            "cves",
+            "critical",
+            "high",
+            "medium",
+            "low",
+            "negligible",
+        ]
         reduction_metrics = ["size", "packages", "cves"]
         num_columns = len(all_metrics) + 1  # +1 for label column
 
@@ -215,7 +225,7 @@ class ImageComparisonWriter(BaseSectionWriter):
             self.row,
             self.col + num_columns - 1,
             "Roll-up metrics",
-            self.formatter.get("header_lightgrey")
+            self.formatter.get("header_lightgrey"),
         )
         self.row += 1
 
@@ -230,7 +240,6 @@ class ImageComparisonWriter(BaseSectionWriter):
             "Medium",
             "Low",
             "Negligible/Unknown",
-            "KEVs",
         ]
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_blue")
@@ -242,15 +251,12 @@ class ImageComparisonWriter(BaseSectionWriter):
             f"Current set of {num_images} images used",
             alt_cells,
             all_metrics,
-            "body_white"
+            "body_white",
         )
 
         # Row 2: Chainguard images summary
         cgr_total_cells = self._write_summary_row(
-            "Chainguard equivalent set of images",
-            cgr_cells,
-            all_metrics,
-            "body_green"
+            "Chainguard equivalent set of images", cgr_cells, all_metrics, "body_green"
         )
 
         # Row 3: Reduction percentage
@@ -378,7 +384,10 @@ class ROISectionWriter(BaseSectionWriter):
             self.row, self.col, "Time spent per CVE", self.formatter.get("body_white")
         )
         self.worksheet.write(
-            self.row, self.col + 1, self.hours_per_vuln, self.formatter.get("body_yellow_hours")
+            self.row,
+            self.col + 1,
+            self.hours_per_vuln,
+            self.formatter.get("body_yellow_hours"),
         )
         self.worksheet.write(
             self.row, self.col + 2, "hours", self.formatter.get("body_white")
@@ -391,7 +400,10 @@ class ROISectionWriter(BaseSectionWriter):
             self.row, self.col, "Eng hourly rate", self.formatter.get("body_white")
         )
         self.worksheet.write(
-            self.row, self.col + 1, self.hourly_rate, self.formatter.get("body_yellow_money")
+            self.row,
+            self.col + 1,
+            self.hourly_rate,
+            self.formatter.get("body_yellow_money"),
         )
         self.worksheet.write(
             self.row, self.col + 2, "dollars", self.formatter.get("body_white")
@@ -476,20 +488,29 @@ class ROISectionWriter(BaseSectionWriter):
                 self.row, self.col + 5, vuln.low, self.formatter.get("body_white")
             )
             self.worksheet.write(
-                self.row, self.col + 6, vuln.negligible, self.formatter.get("body_white")
+                self.row,
+                self.col + 6,
+                vuln.negligible,
+                self.formatter.get("body_white"),
             )
 
             # Hours formula
             hours_formula = f"={self.time_per_vuln_cell} * {cves_cell}"
             self.worksheet.write_formula(
-                self.row, self.col + 7, hours_formula, self.formatter.get("body_white_hours")
+                self.row,
+                self.col + 7,
+                hours_formula,
+                self.formatter.get("body_white_hours"),
             )
             hours_cell = xl_rowcol_to_cell(self.row, self.col + 7)
 
             # Cost formula
             cost_formula = f"={self.hourly_rate_cell} * {hours_cell}"
             self.worksheet.write_formula(
-                self.row, self.col + 8, cost_formula, self.formatter.get("body_white_money")
+                self.row,
+                self.col + 8,
+                cost_formula,
+                self.formatter.get("body_white_money"),
             )
 
             self.row += 1
@@ -557,7 +578,7 @@ class ROISectionWriter(BaseSectionWriter):
             ratios = get_cve_monthly_ratios(
                 image_name=analysis.name,
                 chainguard_image_name=result.pair.chainguard_image,
-                use_api=True
+                use_api=True,
             )
 
             # Calculate estimates
@@ -581,37 +602,61 @@ class ROISectionWriter(BaseSectionWriter):
             # Est. New CVEs formula
             est_total_formula = f"={est_critical_cell}+{est_high_cell}+{est_medium_cell}+{est_low_cell}+{est_negligible_cell}"
             self.worksheet.write_formula(
-                self.row, self.col + 1, est_total_formula, self.formatter.get("body_white")
+                self.row,
+                self.col + 1,
+                est_total_formula,
+                self.formatter.get("body_white"),
             )
             est_total_cell = xl_rowcol_to_cell(self.row, self.col + 1)
 
             # Write estimates
             self.worksheet.write(
-                self.row, self.col + 2, round(est_critical, 2), self.formatter.get("body_white")
+                self.row,
+                self.col + 2,
+                round(est_critical, 2),
+                self.formatter.get("body_white"),
             )
             self.worksheet.write(
-                self.row, self.col + 3, round(est_high, 2), self.formatter.get("body_white")
+                self.row,
+                self.col + 3,
+                round(est_high, 2),
+                self.formatter.get("body_white"),
             )
             self.worksheet.write(
-                self.row, self.col + 4, round(est_medium, 2), self.formatter.get("body_white")
+                self.row,
+                self.col + 4,
+                round(est_medium, 2),
+                self.formatter.get("body_white"),
             )
             self.worksheet.write(
-                self.row, self.col + 5, round(est_low, 2), self.formatter.get("body_white")
+                self.row,
+                self.col + 5,
+                round(est_low, 2),
+                self.formatter.get("body_white"),
             )
             self.worksheet.write(
-                self.row, self.col + 6, round(est_negligible, 2), self.formatter.get("body_white")
+                self.row,
+                self.col + 6,
+                round(est_negligible, 2),
+                self.formatter.get("body_white"),
             )
 
             # Hours and cost formulas
             hours_formula = f"={self.time_per_vuln_cell} * {est_total_cell}"
             self.worksheet.write_formula(
-                self.row, self.col + 7, hours_formula, self.formatter.get("body_white_hours")
+                self.row,
+                self.col + 7,
+                hours_formula,
+                self.formatter.get("body_white_hours"),
             )
             hours_cell = xl_rowcol_to_cell(self.row, self.col + 7)
 
             cost_formula = f"={self.hourly_rate_cell} * {hours_cell}"
             self.worksheet.write_formula(
-                self.row, self.col + 8, cost_formula, self.formatter.get("body_white_money")
+                self.row,
+                self.col + 8,
+                cost_formula,
+                self.formatter.get("body_white_money"),
             )
 
             self.row += 1
@@ -637,7 +682,10 @@ class ROISectionWriter(BaseSectionWriter):
         monthly_cost_cell = xl_rowcol_to_cell(self.row, self.col + 8)
 
         self.worksheet.write(
-            self.row, self.col + 9, "Total (next month)", self.formatter.get("body_lightblue")
+            self.row,
+            self.col + 9,
+            "Total (next month)",
+            self.formatter.get("body_lightblue"),
         )
         self.row += 1
 
@@ -658,7 +706,10 @@ class ROISectionWriter(BaseSectionWriter):
         self.yearly_cost_cell = xl_rowcol_to_cell(self.row, self.col + 8)
 
         self.worksheet.write(
-            self.row, self.col + 9, "Total (next year)", self.formatter.get("body_green")
+            self.row,
+            self.col + 9,
+            "Total (next year)",
+            self.formatter.get("body_green"),
         )
 
 
@@ -666,7 +717,9 @@ class CHPSSectionWriter(BaseSectionWriter):
     """Writes CHPS hardening and provenance scoring section."""
 
     def write(
-        self, alternative_analyses: list[ImageAnalysis], chainguard_analyses: list[ImageAnalysis]
+        self,
+        alternative_analyses: list[ImageAnalysis],
+        chainguard_analyses: list[ImageAnalysis],
     ) -> int:
         """
         Write CHPS section.
@@ -706,7 +759,7 @@ class CHPSSectionWriter(BaseSectionWriter):
             "Configuration",
             "Overall Score (max 16)",
             "Overall Grade",
-            "Overall Improvement"
+            "Overall Improvement",
         ]
         self.worksheet.write_row(
             self.row, self.col, headers, self.formatter.get("header_lightgrey")
@@ -716,15 +769,23 @@ class CHPSSectionWriter(BaseSectionWriter):
         # Write image scores
         for alternative, chainguard in zip(alternative_analyses, chainguard_analyses):
             # Alternative image
-            alternative_score = alternative.chps_score.score if alternative.chps_score else 0
-            alternative_grade = alternative.chps_score.grade if alternative.chps_score else "N/A"
+            alternative_score = (
+                alternative.chps_score.score if alternative.chps_score else 0
+            )
+            alternative_grade = (
+                alternative.chps_score.grade if alternative.chps_score else "N/A"
+            )
 
             # Get component scores for alternative (as "X of Y" format)
             alt_min = self._get_component_score(alternative.chps_score, "minimalism")
             alt_prov = self._get_component_score(alternative.chps_score, "provenance")
-            alt_conf = self._get_component_score(alternative.chps_score, "configuration")
+            alt_conf = self._get_component_score(
+                alternative.chps_score, "configuration"
+            )
 
-            self.worksheet.write(self.row, self.col, alternative.name, self.formatter.get("body_white"))
+            self.worksheet.write(
+                self.row, self.col, alternative.name, self.formatter.get("body_white")
+            )
             self.worksheet.write(
                 self.row, self.col + 1, alt_min, self.formatter.get("body_white")
             )
@@ -735,10 +796,16 @@ class CHPSSectionWriter(BaseSectionWriter):
                 self.row, self.col + 3, alt_conf, self.formatter.get("body_white")
             )
             self.worksheet.write(
-                self.row, self.col + 4, alternative_score, self.formatter.get("body_white")
+                self.row,
+                self.col + 4,
+                alternative_score,
+                self.formatter.get("body_white"),
             )
             self.worksheet.write(
-                self.row, self.col + 5, alternative_grade, self.formatter.get("body_white")
+                self.row,
+                self.col + 5,
+                alternative_grade,
+                self.formatter.get("body_white"),
             )
             # Write empty cell for improvement column to maintain border
             self.worksheet.write(
@@ -747,9 +814,17 @@ class CHPSSectionWriter(BaseSectionWriter):
             self.row += 1
 
             # Chainguard image
-            chainguard_score = chainguard.chps_score.score if chainguard.chps_score else 0
-            chainguard_grade = chainguard.chps_score.grade if chainguard.chps_score else "N/A"
-            improvement = chainguard_score - alternative_score if alternative.chps_score and chainguard.chps_score else 0
+            chainguard_score = (
+                chainguard.chps_score.score if chainguard.chps_score else 0
+            )
+            chainguard_grade = (
+                chainguard.chps_score.grade if chainguard.chps_score else "N/A"
+            )
+            improvement = (
+                chainguard_score - alternative_score
+                if alternative.chps_score and chainguard.chps_score
+                else 0
+            )
 
             # Get component scores for chainguard (as "X of Y" format)
             cgr_min = self._get_component_score(chainguard.chps_score, "minimalism")
@@ -757,7 +832,10 @@ class CHPSSectionWriter(BaseSectionWriter):
             cgr_conf = self._get_component_score(chainguard.chps_score, "configuration")
 
             self.worksheet.write(
-                self.row, self.col, f"{chainguard.name} (Chainguard)", self.formatter.get("body_green")
+                self.row,
+                self.col,
+                f"{chainguard.name} (Chainguard)",
+                self.formatter.get("body_green"),
             )
             self.worksheet.write(
                 self.row, self.col + 1, cgr_min, self.formatter.get("body_green")
@@ -769,20 +847,31 @@ class CHPSSectionWriter(BaseSectionWriter):
                 self.row, self.col + 3, cgr_conf, self.formatter.get("body_green")
             )
             self.worksheet.write(
-                self.row, self.col + 4, chainguard_score, self.formatter.get("body_green")
+                self.row,
+                self.col + 4,
+                chainguard_score,
+                self.formatter.get("body_green"),
             )
             self.worksheet.write(
-                self.row, self.col + 5, chainguard_grade, self.formatter.get("body_green")
+                self.row,
+                self.col + 5,
+                chainguard_grade,
+                self.formatter.get("body_green"),
             )
             if improvement != 0:
                 self.worksheet.write(
-                    self.row, self.col + 6, improvement, self.formatter.get("body_green")
+                    self.row,
+                    self.col + 6,
+                    improvement,
+                    self.formatter.get("body_green"),
                 )
             self.row += 1
 
         return self.row
 
-    def _get_component_score(self, chps_score: Optional["CHPSScore"], component: str) -> str:
+    def _get_component_score(
+        self, chps_score: Optional["CHPSScore"], component: str
+    ) -> str:
         """
         Extract component score from CHPS score details in "X of Y" format.
 
@@ -807,7 +896,9 @@ class CHPSSectionWriter(BaseSectionWriter):
 
         return f"{score} of {max_score}"
 
-    def _get_component_grade(self, chps_score: Optional["CHPSScore"], component: str) -> str:
+    def _get_component_grade(
+        self, chps_score: Optional["CHPSScore"], component: str
+    ) -> str:
         """
         Extract component grade from CHPS score details.
 
@@ -855,7 +946,9 @@ class KEVSectionWriter(BaseSectionWriter):
         self.kev_catalog = kev_catalog
 
     def write(
-        self, alternative_analyses: list["ImageAnalysis"], chainguard_analyses: list["ImageAnalysis"]
+        self,
+        alternative_analyses: list["ImageAnalysis"],
+        chainguard_analyses: list["ImageAnalysis"],
     ) -> int:
         """
         Write KEV details section.
@@ -873,15 +966,17 @@ class KEVSectionWriter(BaseSectionWriter):
         # Collect all KEVs from all images
         kev_entries = []
         for analysis in alternative_analyses + chainguard_analyses:
-            if hasattr(analysis, 'kev_cves') and analysis.kev_cves:
+            if hasattr(analysis, "kev_cves") and analysis.kev_cves:
                 for cve_id in analysis.kev_cves:
                     kev_entry = self.kev_catalog.get_kev_entry(cve_id)
                     if kev_entry:
-                        kev_entries.append({
-                            'image': analysis.name,
-                            'cve_id': cve_id,
-                            'entry': kev_entry
-                        })
+                        kev_entries.append(
+                            {
+                                "image": analysis.name,
+                                "cve_id": cve_id,
+                                "entry": kev_entry,
+                            }
+                        )
 
         self.row += 2
 
@@ -898,13 +993,20 @@ class KEVSectionWriter(BaseSectionWriter):
         self.worksheet.write(
             self.row,
             self.col,
-            "The following CVEs are listed in CISA's Known Exploited Vulnerabilities catalog, indicating they are actively being exploited in the wild.",
+            "The following CVEs are being actively exploited.",
             self.formatter.get("body_white"),
         )
         self.row += 1
 
         # Column headers
-        headers = ["Image", "CVE ID", "Vulnerability Name", "Vendor", "Product", "Date Added to KEV"]
+        headers = [
+            "Image",
+            "CVE ID",
+            "Vulnerability Name",
+            "Vendor",
+            "Product",
+            "Date Added to KEV",
+        ]
         self.worksheet.write_row(
             self.row, self.col, headers, self.formatter.get("header_lightgrey")
         )
@@ -916,13 +1018,16 @@ class KEVSectionWriter(BaseSectionWriter):
                 self.row,
                 self.col,
                 "✓ No Known Exploited Vulnerabilities found in scanned images",
-                self.formatter.get("body_green")
+                self.formatter.get("body_green"),
             )
             # Merge across all columns for centered appearance
             self.worksheet.merge_range(
-                self.row, self.col, self.row, self.col + 5,
+                self.row,
+                self.col,
+                self.row,
+                self.col + 5,
                 "✓ No Known Exploited Vulnerabilities found in scanned images",
-                self.formatter.get("body_green")
+                self.formatter.get("body_green"),
             )
             self.row += 1
             return self.row
@@ -932,28 +1037,58 @@ class KEVSectionWriter(BaseSectionWriter):
             # CVE ID with hyperlink to CVE.org
             cve_url = f"https://www.cve.org/CVERecord?id={kev['cve_id']}"
             self.worksheet.write(
-                self.row, self.col, kev['image'], self.formatter.get("body_red")
+                self.row, self.col, kev["image"], self.formatter.get("body_red")
             )
             self.worksheet.write_url(
-                self.row, self.col + 1, cve_url, self.formatter.get("body_red"), kev['cve_id']
+                self.row,
+                self.col + 1,
+                cve_url,
+                self.formatter.get("body_red"),
+                kev["cve_id"],
             )
 
             # Vulnerability name with hyperlink to CISA KEV catalog
             kev_url = f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={kev['cve_id']}"
             self.worksheet.write_url(
-                self.row, self.col + 2, kev_url, self.formatter.get("body_red"), kev['entry'].vulnerability_name
+                self.row,
+                self.col + 2,
+                kev_url,
+                self.formatter.get("body_red"),
+                kev["entry"].vulnerability_name,
             )
 
             self.worksheet.write(
-                self.row, self.col + 3, kev['entry'].vendor, self.formatter.get("body_red")
+                self.row,
+                self.col + 3,
+                kev["entry"].vendor,
+                self.formatter.get("body_red"),
             )
             self.worksheet.write(
-                self.row, self.col + 4, kev['entry'].product, self.formatter.get("body_red")
+                self.row,
+                self.col + 4,
+                kev["entry"].product,
+                self.formatter.get("body_red"),
             )
             self.worksheet.write(
-                self.row, self.col + 5, kev['entry'].date_added, self.formatter.get("body_red")
+                self.row,
+                self.col + 5,
+                kev["entry"].date_added,
+                self.formatter.get("body_red"),
             )
             self.row += 1
+
+        # Add source citation
+        self.worksheet.write(
+            self.row, self.col, "Source: ", self.formatter.get("body_white")
+        )
+        self.worksheet.write_url(
+            self.row,
+            self.col,
+            "https://www.cisa.gov/known-exploited-vulnerabilities-catalog",
+            self.formatter.get("body_white"),
+            "Source: CISA Known Exploited Vulnerabilities Catalog",
+        )
+        self.row += 1
 
         return self.row
 
@@ -1243,7 +1378,10 @@ class FIPSSectionWriter(BaseSectionWriter):
         fips_monthly_cost_total = xl_rowcol_to_cell(self.row, self.col + 8)
 
         self.worksheet.write(
-            self.row, self.col + 9, "Total (next month)", self.formatter.get("body_lightblue")
+            self.row,
+            self.col + 9,
+            "Total (next month)",
+            self.formatter.get("body_lightblue"),
         )
         self.row += 1
 
@@ -1264,5 +1402,8 @@ class FIPSSectionWriter(BaseSectionWriter):
         self.fips_yearly_cost_cell = xl_rowcol_to_cell(self.row, self.col + 8)
 
         self.worksheet.write(
-            self.row, self.col + 9, "Total (next year)", self.formatter.get("body_green")
+            self.row,
+            self.col + 9,
+            "Total (next year)",
+            self.formatter.get("body_green"),
         )

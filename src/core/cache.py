@@ -72,7 +72,8 @@ class ScanCache:
         self,
         image_name: str,
         digest: Optional[str],
-        require_chps: bool = False
+        require_chps: bool = False,
+        require_kevs: bool = False
     ) -> Optional[ImageAnalysis]:
         """
         Retrieve cached scan result.
@@ -82,9 +83,11 @@ class ScanCache:
             digest: Image digest (sha256)
             require_chps: If True, only return cached results that have CHPS scores.
                          If False, return cached results regardless of CHPS presence.
+            require_kevs: If True, only return cached results that have KEV data.
+                         If False, return cached results regardless of KEV presence.
 
         Returns:
-            Cached ImageAnalysis if available and matches CHPS requirement, None otherwise
+            Cached ImageAnalysis if available and matches requirements, None otherwise
         """
         if not self.enabled or not digest:
             self.misses += 1
@@ -114,6 +117,17 @@ class ScanCache:
             if require_chps and not has_chps:
                 logger.debug(
                     f"Cache miss for {image_name}: CHPS score required but cached result has none"
+                )
+                self.misses += 1
+                return None
+
+            # Validate KEV requirement matches
+            # If KEV is required but cached result doesn't have it, we need to re-scan
+            # If KEV is not required, we can use cached results regardless of whether they have KEV data
+            has_kevs = data.get("kev_count", 0) > 0 or len(data.get("kev_cves", [])) > 0
+            if require_kevs and not has_kevs:
+                logger.debug(
+                    f"Cache miss for {image_name}: KEV data required but cached result has none"
                 )
                 self.misses += 1
                 return None
