@@ -31,6 +31,7 @@ class OutputFormatter:
         "lightblue": "#C8DAF8",
         "white": "#FFFFFF",
         "grey": "#F3F3F3",
+        "red": "#FFE5E5",  # Light red background for KEV highlighting
     }
 
     # Number formats
@@ -162,6 +163,10 @@ class OutputFormatter:
             # Light grey body format
             "body_lightgrey": self._create_format(
                 bg_color=self.COLORS["grey"],
+            ),
+            # Red body format (for KEV highlighting)
+            "body_red": self._create_format(
+                bg_color=self.COLORS["red"],
             ),
         }
 

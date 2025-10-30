@@ -428,6 +428,19 @@ def main():
     # Show cache summary
     logger.info(cache.summary())
 
+    # Check if we have any successful results
+    successful_count = sum(1 for r in results if r.scan_successful)
+    if successful_count == 0:
+        logger.error("=" * 60)
+        logger.error("No successful scan results to generate reports.")
+        logger.error("All image scans failed. Common causes:")
+        logger.error("  - Chainguard images require authentication (run: chainctl auth configure-docker)")
+        logger.error("  - Network connectivity issues")
+        logger.error("  - Invalid image names in CSV")
+        logger.error("Check the error messages above for details.")
+        logger.error("=" * 60)
+        sys.exit(1)
+
     # Generate report(s) based on output type
     # Create output directory if it doesn't exist
     args.output_dir.mkdir(parents=True, exist_ok=True)
