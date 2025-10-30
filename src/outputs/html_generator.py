@@ -148,6 +148,7 @@ class HTMLGenerator:
             appendix_content=appendix_content,
             results=successful,
             platform=config.platform,
+            kev_catalog=config.kev_catalog,
         )
 
         # Clean up chainguard image references
@@ -255,6 +256,7 @@ class HTMLGenerator:
         appendix_content: Optional[str],
         results: list[ScanResult],
         platform: str = "linux/amd64",
+        kev_catalog: Optional['KEVCatalog'] = None,
     ) -> str:
         """Build complete HTML document."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -265,6 +267,7 @@ class HTMLGenerator:
         cve_reduction_section = self._build_cve_reduction_section(metrics)
         images_scanned_section = self._build_images_scanned_section(image_pairs)
         chps_section = self._build_chps_section_if_needed(results)
+        kev_section = self._build_kev_section_if_needed(results, kev_catalog)
         footer_section = self._build_footer_section(customer_name, timestamp, appendix_content)
 
         return f"""<!DOCTYPE html>
@@ -283,6 +286,7 @@ class HTMLGenerator:
 {cve_reduction_section}
 {images_scanned_section}
 {chps_section}
+{kev_section}
 {footer_section}
     </div>
 </body>
@@ -663,6 +667,96 @@ class HTMLGenerator:
             </div>
             {fallback_note}
             <p><em>Note: CHPS scoring evaluates non-CVE security factors including provenance, SBOM quality, signing, and container hardening practices.</em></p>
+        </div>
+"""
+
+    def _build_kev_section_if_needed(self, results: list[ScanResult], kev_catalog: Optional['KEVCatalog']) -> str:
+        """Build KEV section if KEV catalog is provided (always shows table when --with-kevs is used)."""
+        if not kev_catalog:
+            return ""
+
+        # Always generate the section when kev_catalog is provided (--with-kevs was used)
+        logger.info("KEV checking enabled, adding KEV section to HTML report")
+        return self._generate_kev_section(results, kev_catalog)
+
+    def _generate_kev_section(self, results: list[ScanResult], kev_catalog: 'KEVCatalog') -> str:
+        """Generate KEV details section with table of all found KEVs."""
+        rows = []
+
+        for result in results:
+            # Check alternative/customer image
+            alt_analysis = result.alternative_analysis
+            if alt_analysis and getattr(alt_analysis, 'kev_cves', []):
+                for cve_id in alt_analysis.kev_cves:
+                    kev_entry = kev_catalog.get_kev_entry(cve_id)
+                    if kev_entry:
+                        cve_url = f"https://www.cve.org/CVERecord?id={cve_id}"
+                        kev_url = f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={cve_id}"
+                        rows.append(f"""
+                <tr>
+                    <td class="image-name-cell"><code class="image-name">{alt_analysis.name}</code></td>
+                    <td><a href="{cve_url}" target="_blank" class="kev-link">{cve_id}</a></td>
+                    <td><a href="{kev_url}" target="_blank" class="kev-link">{kev_entry.vulnerability_name}</a></td>
+                    <td>{kev_entry.vendor}</td>
+                    <td>{kev_entry.product}</td>
+                    <td>{kev_entry.date_added}</td>
+                </tr>
+                        """)
+
+            # Check Chainguard image
+            cg_analysis = result.chainguard_analysis
+            if cg_analysis and getattr(cg_analysis, 'kev_cves', []):
+                for cve_id in cg_analysis.kev_cves:
+                    kev_entry = kev_catalog.get_kev_entry(cve_id)
+                    if kev_entry:
+                        cve_url = f"https://www.cve.org/CVERecord?id={cve_id}"
+                        kev_url = f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={cve_id}"
+                        rows.append(f"""
+                <tr>
+                    <td class="image-name-cell"><code class="image-name">{cg_analysis.name}</code></td>
+                    <td><a href="{cve_url}" target="_blank" class="kev-link">{cve_id}</a></td>
+                    <td><a href="{kev_url}" target="_blank" class="kev-link">{kev_entry.vulnerability_name}</a></td>
+                    <td>{kev_entry.vendor}</td>
+                    <td>{kev_entry.product}</td>
+                    <td>{kev_entry.date_added}</td>
+                </tr>
+                        """)
+
+        # If no KEVs found, show a positive message
+        if not rows:
+            table_body = """
+                        <tr>
+                            <td colspan="6" style="text-align: center; padding: 20px; color: #059669; font-weight: 600;">
+                                ✓ No Known Exploited Vulnerabilities found in scanned images
+                            </td>
+                        </tr>
+"""
+        else:
+            table_body = "".join(rows)
+
+        return f"""
+        <!-- KEV Details Section -->
+        <div class="images-scanned-section">
+            <h2>Known Exploited Vulnerabilities (KEV)</h2>
+            <p>The following CVEs are listed in CISA's Known Exploited Vulnerabilities catalog, indicating they are actively being exploited in the wild.</p>
+            <div class="image-table-container kev-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Image</th>
+                            <th>CVE ID</th>
+                            <th>Vulnerability Name</th>
+                            <th>Vendor</th>
+                            <th>Product</th>
+                            <th>Date Added to KEV</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {table_body}
+                    </tbody>
+                </table>
+            </div>
+            <p><em>Source: <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog" target="_blank">CISA Known Exploited Vulnerabilities Catalog</a></em></p>
         </div>
 """
 
@@ -1264,6 +1358,31 @@ code {
     color: #c41e3a;
     border-color: #ff6b6b;
     font-weight: bold;
+}
+
+/* KEV Table Styling */
+.kev-table table {
+    font-size: 0.9em;
+}
+
+.kev-table th {
+    background: #c41e3a;
+    color: white;
+}
+
+.kev-table tbody tr:hover {
+    background: #fff9f9;
+}
+
+.kev-link {
+    color: #c41e3a;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.kev-link:hover {
+    text-decoration: underline;
+    color: #a01828;
 }
 
 .vuln-clean {

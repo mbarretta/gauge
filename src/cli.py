@@ -473,6 +473,7 @@ def main():
             platform=args.platform,
             exec_summary_path=exec_summary,
             appendix_path=appendix,
+            kev_catalog=kev_catalog,
         )
         html_generator.generate(
             results=results,
@@ -530,6 +531,7 @@ def main():
             platform=args.platform,
             exec_summary_path=exec_summary,
             appendix_path=appendix,
+            kev_catalog=kev_catalog,
         )
         generator.generate(
             results=results,

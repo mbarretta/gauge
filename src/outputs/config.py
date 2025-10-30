@@ -41,6 +41,7 @@ class HTMLGeneratorConfig(GeneratorConfig):
 
     exec_summary_path: Optional[Path] = None
     appendix_path: Optional[Path] = None
+    kev_catalog: Optional['KEVCatalog'] = None
 
     def validate(self) -> None:
         """Validate HTML-specific configuration."""
