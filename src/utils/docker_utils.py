@@ -317,31 +317,17 @@ class DockerClient:
         logger.debug(f"Mirror.gcr.io fallback for {image}: {mirror_image}")
         return mirror_image
 
-    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None) -> tuple[str, bool, bool]:
+    def _attempt_pull(self, image: str, platform: str) -> tuple[bool, str]:
         """
-        Pull an image from registry with intelligent fallback strategies.
-
-        Strategy order:
-        1. Try exact image as specified
-        2. If Docker Hub image and failed, try mirror.gcr.io fallback FIRST
-        3. If that fails, try with :latest tag as last resort
+        Attempt to pull a single image.
 
         Args:
             image: Image reference to pull
-            platform: Platform specification (default: "linux/amd64")
+            platform: Platform specification
 
         Returns:
-            Tuple of (image_used, used_fallback, pull_successful) where:
-                - image_used: The actual image reference that was pulled (or attempted)
-                - used_fallback: True if any fallback was used, False otherwise
-                - pull_successful: True if image was successfully pulled, False otherwise
+            Tuple of (success, stderr)
         """
-        platform = platform or DEFAULT_PLATFORM
-        original_image = image
-
-        # Strategy 1: Try to pull the exact image
-        logger.debug(f"Attempting to pull {image}")
-
         try:
             result = subprocess.run(
                 [self.runtime, "pull", "--platform", platform, image],
@@ -349,86 +335,93 @@ class DockerClient:
                 text=True,
                 timeout=300
             )
-
-            if result.returncode == 0:
-                logger.debug(f"Successfully pulled {image}")
-                return image, False, True
-
-            # Check error type
-            stderr = result.stderr.lower()
-            is_not_found = any(msg in stderr for msg in [
-                "not found",
-                "manifest unknown",
-                "does not exist",
-                "no such image",
-                "404"
-            ])
-            is_rate_limited = any(msg in stderr for msg in [
-                "toomanyrequests",
-                "rate limit",
-                "too many requests"
-            ])
-
-            # If not found OR rate limited, try fallbacks
-            if is_not_found or is_rate_limited:
-                if is_rate_limited:
-                    logger.warning(f"Rate limited accessing {image}, trying fallback strategies")
-                else:
-                    logger.warning(f"Image {image} not found, trying fallback strategies")
-
-                # Strategy 2: Try mirror.gcr.io fallback FIRST for Docker Hub images
-                mirror_image = self._try_mirror_gcr_fallback(original_image)
-                if mirror_image:
-                    logger.warning(
-                        f"Trying mirror.gcr.io fallback for {original_image} -> {mirror_image}"
-                    )
-
-                    result = subprocess.run(
-                        [self.runtime, "pull", "--platform", platform, mirror_image],
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-
-                    if result.returncode == 0:
-                        logger.info(f"✓ Mirror.gcr.io fallback successful for {mirror_image}")
-                        return mirror_image, True, True
-
-                    logger.debug(f"Mirror.gcr.io fallback also failed: {result.stderr}")
-
-                # Strategy 3: Try fallback to :latest as last resort (if not already using it and not digest-based)
-                if not image.endswith(":latest") and "@sha256:" not in image and ":" in image:
-                    base_image = image.rsplit(":", 1)[0]
-                    latest_image = f"{base_image}:latest"
-
-                    logger.warning(
-                        f"Trying :latest fallback: {latest_image}"
-                    )
-
-                    result = subprocess.run(
-                        [self.runtime, "pull", "--platform", platform, latest_image],
-                        capture_output=True,
-                        text=True,
-                        timeout=300
-                    )
-
-                    if result.returncode == 0:
-                        logger.info(f"✓ Successfully fell back to {latest_image}")
-                        return latest_image, True, True
-
-                    logger.debug(f"Fallback to {latest_image} also failed: {result.stderr}")
-
-                # All fallback strategies failed
-                logger.error(f"All fallback strategies failed for {original_image}")
-                return original_image, False, False
-            else:
-                # Not a "not found" or rate limit error
-                logger.error(f"Failed to pull {image}: {result.stderr}")
-                return image, False, False
-
+            return result.returncode == 0, result.stderr
         except subprocess.TimeoutExpired:
-            logger.error(f"Timeout pulling {image}")
+            return False, "timeout"
+
+    def _is_recoverable_error(self, stderr: str) -> bool:
+        """Check if error is recoverable with fallback strategies."""
+        stderr_lower = stderr.lower()
+
+        not_found_errors = ["not found", "manifest unknown", "does not exist", "no such image", "404"]
+        rate_limit_errors = ["toomanyrequests", "rate limit", "too many requests"]
+
+        return any(msg in stderr_lower for msg in not_found_errors + rate_limit_errors)
+
+    def _get_latest_fallback_image(self, image: str) -> str | None:
+        """
+        Get :latest fallback image if applicable.
+
+        Returns:
+            Latest image reference or None if not applicable
+        """
+        if image.endswith(":latest") or "@sha256:" in image or ":" not in image:
+            return None
+
+        base_image = image.rsplit(":", 1)[0]
+        return f"{base_image}:latest"
+
+    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None) -> tuple[str, bool, bool]:
+        """
+        Pull an image from registry with intelligent fallback strategies.
+
+        Strategy order:
+        1. Try exact image as specified
+        2. If Docker Hub image and failed, try mirror.gcr.io fallback
+        3. If that fails, try with :latest tag as last resort
+
+        Args:
+            image: Image reference to pull
+            platform: Platform specification (default: "linux/amd64")
+
+        Returns:
+            Tuple of (image_used, used_fallback, pull_successful)
+        """
+        platform = platform or DEFAULT_PLATFORM
+        original_image = image
+
+        # Strategy 1: Try to pull the exact image
+        logger.debug(f"Attempting to pull {image}")
+        success, stderr = self._attempt_pull(image, platform)
+
+        if success:
+            logger.debug(f"Successfully pulled {image}")
+            return image, False, True
+
+        # Check if error is recoverable
+        if not self._is_recoverable_error(stderr):
+            logger.error(f"Failed to pull {image}: {stderr}")
             return image, False, False
+
+        logger.warning(f"Image {image} not found or rate limited, trying fallback strategies")
+
+        # Strategy 2: Try mirror.gcr.io fallback for Docker Hub images
+        mirror_image = self._try_mirror_gcr_fallback(original_image)
+        if mirror_image:
+            logger.warning(f"Trying mirror.gcr.io fallback: {mirror_image}")
+            success, stderr = self._attempt_pull(mirror_image, platform)
+
+            if success:
+                logger.info(f"✓ Mirror.gcr.io fallback successful for {mirror_image}")
+                return mirror_image, True, True
+
+            logger.debug(f"Mirror.gcr.io fallback failed: {stderr}")
+
+        # Strategy 3: Try :latest fallback as last resort
+        latest_image = self._get_latest_fallback_image(image)
+        if latest_image:
+            logger.warning(f"Trying :latest fallback: {latest_image}")
+            success, stderr = self._attempt_pull(latest_image, platform)
+
+            if success:
+                logger.info(f"✓ Successfully fell back to {latest_image}")
+                return latest_image, True, True
+
+            logger.debug(f"Fallback to {latest_image} failed: {stderr}")
+
+        # All strategies failed
+        logger.error(f"All fallback strategies failed for {original_image}")
+        return original_image, False, False
 
     def ensure_chainguard_auth(self) -> bool:
         """

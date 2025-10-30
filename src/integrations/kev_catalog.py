@@ -28,6 +28,7 @@ class KEVCatalog:
         """Initialize KEV catalog."""
         self.vulnerabilities: list[KEVEntry] = []
         self.cve_ids: set[str] = set()
+        self._entries_by_id: dict[str, KEVEntry] = {}
         self.loaded = False
 
     def load(self) -> bool:
@@ -58,6 +59,7 @@ class KEVCatalog:
                 )
                 self.vulnerabilities.append(entry)
                 self.cve_ids.add(entry.cve_id)
+                self._entries_by_id[entry.cve_id] = entry
 
             self.loaded = True
             logger.info(f"Loaded {len(self.vulnerabilities)} KEV entries")
@@ -95,10 +97,7 @@ class KEVCatalog:
         Returns:
             KEVEntry if found, None otherwise
         """
-        for entry in self.vulnerabilities:
-            if entry.cve_id == cve_id:
-                return entry
-        return None
+        return self._entries_by_id.get(cve_id)
 
     def check_image_for_kevs(
         self, image_name: str, cve_ids: list[str]

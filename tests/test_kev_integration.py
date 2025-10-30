@@ -53,6 +53,7 @@ class TestKEVCatalog:
             date_added="2021-12-10"
         )
         catalog.vulnerabilities = [entry]
+        catalog._entries_by_id = {entry.cve_id: entry}
 
         result = catalog.get_kev_entry("CVE-2021-44228")
         assert result == entry

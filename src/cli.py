@@ -308,27 +308,37 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
 
 
 
-def main():
-    """Main entry point."""
-    args = parse_args()
-    setup_logging(args.verbose)
+def sanitize_customer_name(name: str) -> str:
+    """
+    Sanitize customer name for use in filenames.
 
-    logger.info("Gauge - Container Vulnerability Assessment v2.0")
-    logger.info("=" * 60)
+    Args:
+        name: Customer name to sanitize
 
-    # Determine output type from args.output
-    output_format = args.output
-    if output_format == "both":
-        output_type = "Both Assessment Summary (HTML) and Cost Analysis (XLSX)"
-    elif output_format == "cost_analysis":
-        output_type = "Vulnerability Cost Analysis (XLSX)"
-    else:  # vuln_summary
-        output_type = "Vulnerability Assessment Summary (HTML)"
-    logger.info(f"Output type: {output_type}")
+    Returns:
+        Safe filename-compatible version of the name
+    """
+    import re
+    # Remove & and . characters entirely
+    safe_name = name.replace('&', '').replace('.', '')
+    # Replace other special characters with underscores
+    safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in safe_name)
+    safe_name = safe_name.replace(' ', '_').lower()
+    # Collapse multiple consecutive underscores
+    safe_name = re.sub(r'_+', '_', safe_name)
+    return safe_name
 
-    # Load image pairs
-    pairs = load_image_pairs(args.source)
 
+def initialize_components(args):
+    """
+    Initialize Docker client, cache, and KEV catalog.
+
+    Args:
+        args: Parsed command-line arguments
+
+    Returns:
+        Tuple of (docker_client, cache, kev_catalog)
+    """
     # Initialize Docker client
     try:
         docker_client = DockerClient()
@@ -346,8 +356,7 @@ def main():
         logger.info("Clearing cache...")
         cache.clear()
 
-    # Validate Chainguard authentication before proceeding
-    # This prevents failures during parallel image pulling
+    # Validate Chainguard authentication
     if not docker_client.ensure_chainguard_auth():
         logger.error("Failed to authenticate to Chainguard registry")
         logger.error("")
@@ -365,18 +374,21 @@ def main():
         kev_catalog = KEVCatalog()
         kev_catalog.load()
 
-    # Initialize scanner
-    scanner = VulnerabilityScanner(
-        cache=cache,
-        docker_client=docker_client,
-        max_workers=args.max_workers,
-        platform=args.platform,
-        check_fresh_images=not args.no_fresh_check,
-        with_chps=args.with_chps,
-        kev_catalog=kev_catalog,
-    )
+    return docker_client, cache, kev_catalog
 
-    # Setup checkpoint/resume
+
+def execute_scans(args, scanner, pairs):
+    """
+    Execute scans with checkpoint/resume support.
+
+    Args:
+        args: Parsed command-line arguments
+        scanner: VulnerabilityScanner instance
+        pairs: List of ImagePair objects to scan
+
+    Returns:
+        List of ScanResult objects
+    """
     from core.persistence import ScanResultPersistence
     persistence = ScanResultPersistence(args.checkpoint_file)
 
@@ -425,42 +437,32 @@ def main():
             logger.info(f"Run with --resume to continue from: {args.checkpoint_file}")
             sys.exit(1)
 
-    # Show cache summary
-    logger.info(cache.summary())
+    return results
 
-    # Check if we have any successful results
-    successful_count = sum(1 for r in results if r.scan_successful)
-    if successful_count == 0:
-        logger.error("=" * 60)
-        logger.error("No successful scan results to generate reports.")
-        logger.error("All image scans failed. Common causes:")
-        logger.error("  - Chainguard images require authentication (run: chainctl auth configure-docker)")
-        logger.error("  - Network connectivity issues")
-        logger.error("  - Invalid image names in CSV")
-        logger.error("Check the error messages above for details.")
-        logger.error("=" * 60)
-        sys.exit(1)
 
-    # Generate report(s) based on output type
-    # Create output directory if it doesn't exist
+def generate_reports(args, results, kev_catalog, safe_customer_name):
+    """
+    Generate output reports based on requested format.
+
+    Args:
+        args: Parsed command-line arguments
+        results: List of ScanResult objects
+        kev_catalog: KEVCatalog instance or None
+        safe_customer_name: Sanitized customer name for filenames
+
+    Returns:
+        List of generated output file paths
+    """
+    from outputs.config import HTMLGeneratorConfig, XLSXGeneratorConfig
+
+    # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use customer name for output filenames (sanitize for filesystem safety)
-    # Convert to lowercase, replace spaces with underscores, remove special chars
-    # Collapse consecutive underscores to single underscore
-    import re
-    # First, remove & and . characters entirely (don't replace with underscore)
-    safe_customer_name = args.customer_name.replace('&', '').replace('.', '')
-    # Then replace other special characters with underscores, keep alphanumeric, spaces, hyphens, underscores
-    safe_customer_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in safe_customer_name)
-    safe_customer_name = safe_customer_name.replace(' ', '_').lower()
-    # Collapse multiple consecutive underscores into one
-    safe_customer_name = re.sub(r'_+', '_', safe_customer_name)
+    output_format = args.output
+    output_files = []
 
     if output_format == "both":
-        # Generate both outputs with appropriate extensions
-        from outputs.config import HTMLGeneratorConfig, XLSXGeneratorConfig
-
+        # Generate both outputs
         html_path = args.output_dir / f"{safe_customer_name}.html"
         xlsx_path = args.output_dir / f"{safe_customer_name}.xlsx"
 
@@ -501,8 +503,6 @@ def main():
 
     elif output_format == "cost_analysis":
         # Generate XLSX cost analysis
-        from outputs.config import XLSXGeneratorConfig
-
         xlsx_path = args.output_dir / f"{safe_customer_name}.xlsx"
         generator = XLSXGenerator()
         xlsx_config = XLSXGeneratorConfig(
@@ -522,8 +522,6 @@ def main():
 
     elif output_format == "vuln_summary":
         # Generate HTML assessment summary
-        from outputs.config import HTMLGeneratorConfig
-
         html_path = args.output_dir / f"{safe_customer_name}.html"
         generator = HTMLGenerator()
         exec_summary = args.exec_summary if args.exec_summary.exists() else None
@@ -541,6 +539,69 @@ def main():
             config=html_config,
         )
         output_files = [html_path]
+
+    return output_files
+
+
+def main():
+    """Main entry point."""
+    args = parse_args()
+    setup_logging(args.verbose)
+
+    logger.info("Gauge - Container Vulnerability Assessment v2.0")
+    logger.info("=" * 60)
+
+    # Determine output type from args.output
+    output_format = args.output
+    if output_format == "both":
+        output_type = "Both Assessment Summary (HTML) and Cost Analysis (XLSX)"
+    elif output_format == "cost_analysis":
+        output_type = "Vulnerability Cost Analysis (XLSX)"
+    else:  # vuln_summary
+        output_type = "Vulnerability Assessment Summary (HTML)"
+    logger.info(f"Output type: {output_type}")
+
+    # Load image pairs
+    pairs = load_image_pairs(args.source)
+
+    # Initialize components
+    docker_client, cache, kev_catalog = initialize_components(args)
+
+    # Initialize scanner
+    scanner = VulnerabilityScanner(
+        cache=cache,
+        docker_client=docker_client,
+        max_workers=args.max_workers,
+        platform=args.platform,
+        check_fresh_images=not args.no_fresh_check,
+        with_chps=args.with_chps,
+        kev_catalog=kev_catalog,
+    )
+
+    # Execute scans with checkpoint/resume support
+    results = execute_scans(args, scanner, pairs)
+
+    # Show cache summary
+    logger.info(cache.summary())
+
+    # Check if we have any successful results
+    successful_count = sum(1 for r in results if r.scan_successful)
+    if successful_count == 0:
+        logger.error("=" * 60)
+        logger.error("No successful scan results to generate reports.")
+        logger.error("All image scans failed. Common causes:")
+        logger.error("  - Chainguard images require authentication (run: chainctl auth configure-docker)")
+        logger.error("  - Network connectivity issues")
+        logger.error("  - Invalid image names in CSV")
+        logger.error("Check the error messages above for details.")
+        logger.error("=" * 60)
+        sys.exit(1)
+
+    # Sanitize customer name for filenames
+    safe_customer_name = sanitize_customer_name(args.customer_name)
+
+    # Generate reports
+    output_files = generate_reports(args, results, kev_catalog, safe_customer_name)
 
     # Summary
     successful = sum(1 for r in results if r.scan_successful)
