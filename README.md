@@ -531,7 +531,7 @@ gauge --source large-fleet.csv \
 gauge/
 ├── src/                              # Source code
 │   ├── core/                         # Core functionality
-│   │   ├── cache.py                 # Digest-based scan caching
+│   │   ├── cache.py                 # Digest-based scan caching with CHPS/KEV awareness
 │   │   ├── exceptions.py            # Exception hierarchy (GaugeException, ScanException, etc.)
 │   │   ├── models.py                # Data models (ImageAnalysis, ScanResult, CHPSScore)
 │   │   ├── persistence.py           # Checkpoint/resume functionality
@@ -540,24 +540,26 @@ gauge/
 │   ├── integrations/                # External tool integrations
 │   │   ├── chainguard_api.py       # Chainguard API client for CVE growth rates
 │   │   ├── grype_provider.py       # Grype scanner provider implementation
-│   │   └── kev_catalog.py          # CISA KEV catalog integration
+│   │   └── kev_catalog.py          # CISA KEV catalog integration with O(1) lookups
 │   ├── outputs/                     # Report generators
 │   │   ├── base.py                 # Base generator interface
 │   │   ├── config.py               # Generator configuration dataclasses
 │   │   ├── html_generator.py      # HTML assessment summary generator
+│   │   ├── styles.css              # External CSS styles for HTML reports
 │   │   ├── xlsx_formats.py         # XLSX formatting styles (factory pattern)
 │   │   ├── xlsx_generator.py      # XLSX cost analysis generator
 │   │   └── xlsx_writers.py         # XLSX section writers (modular components)
 │   ├── utils/                       # Utility modules
 │   │   ├── chps_utils.py           # CHPS (Container Hardening) integration
 │   │   ├── cve_ratios.py           # CVE growth rate calculation with API fallback
-│   │   ├── docker_utils.py         # Docker/Podman operations
+│   │   ├── docker_utils.py         # Docker/Podman operations with intelligent fallback
 │   │   ├── fips_calculator.py      # FIPS implementation cost calculations
+│   │   ├── metrics_calculator.py   # CVE reduction metrics calculation
 │   │   ├── roi_calculator.py       # ROI and CVE cost projections
 │   │   ├── validation.py           # Input validation utilities
 │   │   └── vulnerability_utils.py  # Vulnerability aggregation logic
 │   ├── constants.py                 # Centralized configuration constants
-│   └── cli.py                       # Command-line interface
+│   └── cli.py                       # Command-line interface with modular helper functions
 ├── tests/                            # Unit tests (pytest)
 │   ├── conftest.py                  # Shared test fixtures
 │   ├── test_models.py              # Model tests
@@ -579,15 +581,16 @@ gauge/
 ### Key Components
 
 **Core Modules:**
-- `scanner.py`: Orchestrates Syft (SBOM) → Grype (CVE scanning) → CHPS (hardening) pipeline
-- `cache.py`: Digest-based caching for performance optimization
+- `scanner.py`: Orchestrates Syft (SBOM) → Grype (CVE scanning) → CHPS (hardening) → KEV detection pipeline
+- `cache.py`: Digest-based caching with CHPS and KEV awareness for performance optimization
 - `models.py`: Immutable data structures for type safety
 - `exceptions.py`: Standardized exception hierarchy for consistent error handling
 - `persistence.py`: Checkpoint/resume functionality for long-running scans
 - `scanner_interface.py`: Plugin interface for extensible scanner integration
 
 **Report Generators:**
-- `html_generator.py`: Professional assessment summaries with Chainguard branding
+- `html_generator.py`: Professional assessment summaries with Chainguard branding, loads CSS from external file
+- `styles.css`: Externalized CSS styles (851 lines) for HTML reports, enabling easier customization
 - `xlsx_generator.py`: Interactive cost analysis with ROI calculations
 - `xlsx_writers.py`: Modular section writers following single-responsibility principle
 - `xlsx_formats.py`: Formatting factory pattern eliminates style duplication
@@ -596,14 +599,15 @@ gauge/
 **Integrations:**
 - `grype_provider.py`: Grype scanner provider implementing plugin interface
 - `chainguard_api.py`: Chainguard API client for dynamic CVE growth rates
-- `kev_catalog.py`: CISA Known Exploited Vulnerabilities catalog integration
+- `kev_catalog.py`: CISA Known Exploited Vulnerabilities catalog with O(1) dictionary lookups
 - `chps_utils.py`: Containerized CHPS execution with score recalculation
 
 **Utilities:**
 - `validation.py`: Comprehensive input validation (images, paths, numbers, names)
 - `vulnerability_utils.py`: Centralized vulnerability aggregation logic
+- `metrics_calculator.py`: Extracted CVE reduction metrics calculation for separation of concerns
 - `cve_ratios.py`: CVE growth rate calculation with API fallback
-- `docker_utils.py`: Unified Docker/Podman interface with platform awareness
+- `docker_utils.py`: Unified Docker/Podman interface with intelligent multi-strategy fallback (mirror.gcr.io, :latest)
 - `roi_calculator.py`: ROI and CVE cost projections
 - `fips_calculator.py`: FIPS implementation cost calculations
 
@@ -619,11 +623,13 @@ gauge/
 
 ### Design Principles
 
-- **SOLID Principles**: Clean interfaces, single responsibilities
+- **SOLID Principles**: Clean interfaces, single responsibilities, separation of concerns
 - **Immutable Data**: Frozen dataclasses prevent accidental mutation
 - **Type Safety**: Comprehensive type hints throughout
 - **Modern Python**: Uses `src/` layout (Python best practice)
 - **Dependency Injection**: Testable, mockable components
+- **Performance Optimization**: O(1) lookups, caching, parallel processing
+- **Modularity**: Extracted utilities and helpers for maintainability
 
 ## Development
 
@@ -680,9 +686,10 @@ Gauge consolidates and improves upon two previous tools:
 The unified tool maintains 100% feature parity with both while adding:
 - Cleaner architecture with `src/` layout
 - Better error handling
-- Improved performance
-- Enhanced logging
+- Improved performance with intelligent caching
+- Enhanced logging and debugging
 - Type safety throughout
+- Modular design for easy maintenance
 
 ## License
 
