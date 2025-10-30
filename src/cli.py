@@ -489,6 +489,7 @@ def main():
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             auto_detect_fips=args.with_fips,
+            kev_catalog=kev_catalog,
         )
         xlsx_generator.generate(
             results=results,
@@ -510,6 +511,7 @@ def main():
             hours_per_vuln=args.hours_per_vuln,
             hourly_rate=args.hourly_rate,
             auto_detect_fips=args.with_fips,
+            kev_catalog=kev_catalog,
         )
         generator.generate(
             results=results,

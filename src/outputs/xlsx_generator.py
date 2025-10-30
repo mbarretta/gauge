@@ -25,6 +25,7 @@ from outputs.xlsx_writers import (
     ImageComparisonWriter,
     ROISectionWriter,
     CHPSSectionWriter,
+    KEVSectionWriter,
     FIPSSectionWriter,
 )
 
@@ -145,6 +146,11 @@ class XLSXGenerator(OutputGenerator):
         if any(a.chps_score for a in alternative_analyses + chainguard_analyses):
             chps_writer = CHPSSectionWriter(worksheet, formatter, row)
             row = chps_writer.write(alternative_analyses, chainguard_analyses)
+
+        # KEV section if KEV catalog is provided (after CHPS section)
+        if config.kev_catalog:
+            kev_writer = KEVSectionWriter(worksheet, formatter, row, config.kev_catalog)
+            row = kev_writer.write(alternative_analyses, chainguard_analyses)
 
         # Finalize
         worksheet.autofit()

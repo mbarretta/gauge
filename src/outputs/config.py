@@ -69,6 +69,7 @@ class XLSXGeneratorConfig(GeneratorConfig):
     hours_per_vuln: float = DEFAULT_HOURS_PER_VULNERABILITY
     hourly_rate: float = DEFAULT_HOURLY_RATE
     auto_detect_fips: bool = False
+    kev_catalog: Optional['KEVCatalog'] = None
 
     def validate(self) -> None:
         """Validate XLSX-specific configuration."""

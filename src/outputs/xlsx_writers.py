@@ -832,6 +832,132 @@ class CHPSSectionWriter(BaseSectionWriter):
         return grade
 
 
+class KEVSectionWriter(BaseSectionWriter):
+    """Writes Known Exploited Vulnerabilities (KEV) details section."""
+
+    def __init__(
+        self,
+        worksheet: "xlsxwriter.worksheet.Worksheet",
+        formatter: "OutputFormatter",
+        row: int,
+        kev_catalog: Optional["KEVCatalog"] = None,
+    ):
+        """
+        Initialize KEV section writer.
+
+        Args:
+            worksheet: XlsxWriter worksheet
+            formatter: OutputFormatter instance
+            row: Starting row
+            kev_catalog: KEV catalog for looking up KEV details
+        """
+        super().__init__(worksheet, formatter, row)
+        self.kev_catalog = kev_catalog
+
+    def write(
+        self, alternative_analyses: list["ImageAnalysis"], chainguard_analyses: list["ImageAnalysis"]
+    ) -> int:
+        """
+        Write KEV details section.
+
+        Args:
+            alternative_analyses: Alternative image analyses
+            chainguard_analyses: Chainguard image analyses
+
+        Returns:
+            Final row number
+        """
+        if not self.kev_catalog:
+            return self.row
+
+        # Collect all KEVs from all images
+        kev_entries = []
+        for analysis in alternative_analyses + chainguard_analyses:
+            if hasattr(analysis, 'kev_cves') and analysis.kev_cves:
+                for cve_id in analysis.kev_cves:
+                    kev_entry = self.kev_catalog.get_kev_entry(cve_id)
+                    if kev_entry:
+                        kev_entries.append({
+                            'image': analysis.name,
+                            'cve_id': cve_id,
+                            'entry': kev_entry
+                        })
+
+        self.row += 2
+
+        # Section header
+        self.worksheet.write(
+            self.row,
+            self.col,
+            "Known Exploited Vulnerabilities (KEV)",
+            self.formatter.get("header_blue"),
+        )
+        self.row += 1
+
+        # Description
+        self.worksheet.write(
+            self.row,
+            self.col,
+            "The following CVEs are listed in CISA's Known Exploited Vulnerabilities catalog, indicating they are actively being exploited in the wild.",
+            self.formatter.get("body_white"),
+        )
+        self.row += 1
+
+        # Column headers
+        headers = ["Image", "CVE ID", "Vulnerability Name", "Vendor", "Product", "Date Added to KEV"]
+        self.worksheet.write_row(
+            self.row, self.col, headers, self.formatter.get("header_lightgrey")
+        )
+        self.row += 1
+
+        # If no KEVs found, show positive message
+        if not kev_entries:
+            self.worksheet.write(
+                self.row,
+                self.col,
+                "✓ No Known Exploited Vulnerabilities found in scanned images",
+                self.formatter.get("body_green")
+            )
+            # Merge across all columns for centered appearance
+            self.worksheet.merge_range(
+                self.row, self.col, self.row, self.col + 5,
+                "✓ No Known Exploited Vulnerabilities found in scanned images",
+                self.formatter.get("body_green")
+            )
+            self.row += 1
+            return self.row
+
+        # Write KEV entries
+        for kev in kev_entries:
+            # CVE ID with hyperlink to CVE.org
+            cve_url = f"https://www.cve.org/CVERecord?id={kev['cve_id']}"
+            self.worksheet.write(
+                self.row, self.col, kev['image'], self.formatter.get("body_red")
+            )
+            self.worksheet.write_url(
+                self.row, self.col + 1, cve_url, self.formatter.get("body_red"), kev['cve_id']
+            )
+
+            # Vulnerability name with hyperlink to CISA KEV catalog
+            kev_url = f"https://www.cisa.gov/known-exploited-vulnerabilities-catalog?search_api_fulltext={kev['cve_id']}"
+            self.worksheet.write_url(
+                self.row, self.col + 2, kev_url, self.formatter.get("body_red"), kev['entry'].vulnerability_name
+            )
+
+            self.worksheet.write(
+                self.row, self.col + 3, kev['entry'].vendor, self.formatter.get("body_red")
+            )
+            self.worksheet.write(
+                self.row, self.col + 4, kev['entry'].product, self.formatter.get("body_red")
+            )
+            self.worksheet.write(
+                self.row, self.col + 5, kev['entry'].date_added, self.formatter.get("body_red")
+            )
+            self.row += 1
+
+        return self.row
+
+
 class FIPSSectionWriter(BaseSectionWriter):
     """Writes FIPS implementation and maintenance sections."""
 
