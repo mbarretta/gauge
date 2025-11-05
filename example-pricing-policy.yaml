@@ -1,0 +1,77 @@
+# Chainguard Image Pricing Policy
+#
+# This file defines pricing tiers and volume discounts for Chainguard images.
+# Each tier can have multiple volume ranges with different per-image list prices.
+# The discounted price is automatically calculated by applying discount_percent to list_price.
+#
+# Format:
+#   tier_name:
+#     - min: <minimum quantity inclusive>
+#       max: <maximum quantity inclusive, or null for unlimited>
+#       list_price: <list price per image before discount>
+#       discount_percent: <discount percentage as float (e.g., 0, 10, 20.5)>
+#
+# Example: list_price of 29000 with discount_percent of 10 yields discounted price of 26100
+
+# Base images: Minimal OS and language runtimes
+base:
+  - min: 1
+    max: 10
+    list_price: 29000
+    discount_percent: 0
+  - min: 11
+    max: 25
+    list_price: 26000
+    discount_percent: 10
+  - min: 26
+    max: null
+    list_price: 23000
+    discount_percent: 20
+
+# Application images: Full applications, databases, web servers
+application:
+  - min: 1
+    max: null
+    list_price: 28000
+    discount_percent: 20
+
+# FIPS-validated images: FIPS 140-2/140-3 compliant images
+fips:
+  - min: 1
+    max: 5
+    list_price: 45000
+    discount_percent: 0
+  - min: 6
+    max: 15
+    list_price: 40500
+    discount_percent: 10
+  - min: 16
+    max: null
+    list_price: 36000
+    discount_percent: 20
+
+# AI images: Machine learning and AI framework images
+ai:
+  - min: 1
+    max: 5
+    list_price: 50000
+    discount_percent: 0
+  - min: 6
+    max: 15
+    list_price: 45000
+    discount_percent: 10
+  - min: 16
+    max: null
+    list_price: 40000
+    discount_percent: 20
+
+# Metadata
+policy_name: "Standard Enterprise Pricing"
+effective_date: "2025-01-01"
+currency: "USD"
+pricing_unit: "per image per year"
+notes: |
+  - All prices are annual subscription fees
+  - Volume discounts apply within each tier independently
+  - Custom pricing available for 100+ images
+  - Contact sales@chainguard.dev for enterprise agreements

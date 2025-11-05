@@ -34,6 +34,15 @@ class SeverityLevel(str, Enum):
         ]
 
 
+class ImageTier(str, Enum):
+    """Chainguard image tier types for pricing."""
+
+    BASE = "base"
+    APPLICATION = "application"
+    FIPS = "fips"
+    AI = "ai"
+
+
 @dataclass(frozen=True)
 class VulnerabilityCount:
     """

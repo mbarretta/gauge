@@ -16,6 +16,8 @@ import markdown
 
 from constants import CHAINGUARD_LOGO_PATH, DEFAULT_PLATFORM, GRADE_TO_CSS_CLASS
 from core.models import ScanResult, ImageAnalysis
+from utils.formatting import format_number
+from utils.markdown_utils import load_and_convert_markdown
 from utils.metrics_calculator import MetricsCalculator
 
 logger = logging.getLogger(__name__)
@@ -168,9 +170,6 @@ class HTMLGenerator:
         """Calculate CVE reduction metrics using MetricsCalculator."""
         return MetricsCalculator.calculate_metrics(results)
 
-    def _format_number(self, num: int) -> str:
-        """Format number with thousands separators."""
-        return f"{num:,}"
 
     def _build_html_template(
         self,
@@ -251,7 +250,7 @@ class HTMLGenerator:
                     {metrics["reduction_percentage"]}%
                     <span>CVE Reduction</span>
                 </div>
-                <p style="text-align: center; margin: 0; font-size: 16px; color: var(--cg-primary);"><strong>{self._format_number(metrics["total_reduction"])}</strong> fewer vulnerabilities with Chainguard images</p>
+                <p style="text-align: center; margin: 0; font-size: 16px; color: var(--cg-primary);"><strong>{format_number(metrics["total_reduction"])}</strong> fewer vulnerabilities with Chainguard images</p>
             </div>
 
             <!-- Overview Section within CVE Reduction Analysis -->
@@ -261,7 +260,7 @@ class HTMLGenerator:
                     <div class="summary-column-content">
                         <h2>Your Images</h2>
                         <div class="total-box customer-total">
-                            {self._format_number(metrics["total_customer_vulns"])}
+                            {format_number(metrics["total_customer_vulns"])}
                             <span>Total Vulnerabilities</span>
                         </div>
                         {self._generate_severity_table(metrics["alternative_summary"])}
@@ -273,7 +272,7 @@ class HTMLGenerator:
                     <div class="summary-column-content">
                         <h2>Chainguard Images</h2>
                         <div class="total-box chainguard-total">
-                            {self._format_number(metrics["total_chainguard_vulns"])}
+                            {format_number(metrics["total_chainguard_vulns"])}
                             <span>Total Vulnerabilities</span>
                         </div>
                         {self._generate_severity_table(metrics["chainguard_summary"])}
@@ -383,7 +382,7 @@ class HTMLGenerator:
             severity_lower = severity.lower()
             rows.append(f"""                                <tr>
                                     <td><span class="severity-indicator {severity_lower}"></span>{severity}</td>
-                                    <td class="severity-count">{self._format_number(count)}</td>
+                                    <td class="severity-count">{format_number(count)}</td>
                                 </tr>""")
 
         return f"""<table class="summary-table">
@@ -439,23 +438,23 @@ class HTMLGenerator:
         badges = []
         if analysis.vulnerabilities.critical > 0:
             badges.append(
-                f'<span class="vuln-badge vuln-critical">{self._format_number(analysis.vulnerabilities.critical)}</span>'
+                f'<span class="vuln-badge vuln-critical">{format_number(analysis.vulnerabilities.critical)}</span>'
             )
         if analysis.vulnerabilities.high > 0:
             badges.append(
-                f'<span class="vuln-badge vuln-high">{self._format_number(analysis.vulnerabilities.high)}</span>'
+                f'<span class="vuln-badge vuln-high">{format_number(analysis.vulnerabilities.high)}</span>'
             )
         if analysis.vulnerabilities.medium > 0:
             badges.append(
-                f'<span class="vuln-badge vuln-medium">{self._format_number(analysis.vulnerabilities.medium)}</span>'
+                f'<span class="vuln-badge vuln-medium">{format_number(analysis.vulnerabilities.medium)}</span>'
             )
         if analysis.vulnerabilities.low > 0:
             badges.append(
-                f'<span class="vuln-badge vuln-low">{self._format_number(analysis.vulnerabilities.low)}</span>'
+                f'<span class="vuln-badge vuln-low">{format_number(analysis.vulnerabilities.low)}</span>'
             )
         if analysis.vulnerabilities.negligible > 0:
             badges.append(
-                f'<span class="vuln-badge vuln-negligible">{self._format_number(analysis.vulnerabilities.negligible)}</span>'
+                f'<span class="vuln-badge vuln-negligible">{format_number(analysis.vulnerabilities.negligible)}</span>'
             )
 
         # Add KEV badge if KEVs are present
@@ -726,45 +725,25 @@ class HTMLGenerator:
         self, path: Optional[Path], metrics: dict, customer_name: str
     ) -> Optional[str]:
         """Load and format executive summary with template variable substitution."""
-        if not path or not path.exists():
-            return None
-
-        try:
-            with open(path, "r") as f:
-                content = f.read()
-
-            # Apply template variables
-            content = _apply_template_variables(content, metrics, customer_name)
-
-            # Convert markdown to HTML
-            html_content = markdown.markdown(content)
-            return html_content
-
-        except Exception as e:
-            logger.warning(f"Could not load executive summary: {e}")
-            return None
+        return load_and_convert_markdown(
+            path,
+            section_name="executive summary",
+            template_processor=lambda content: _apply_template_variables(
+                content, metrics, customer_name
+            ),
+        )
 
     def _load_appendix(
         self, path: Optional[Path], metrics: dict, customer_name: str
     ) -> Optional[str]:
         """Load and format appendix with template variable substitution."""
-        if not path or not path.exists():
-            return None
-
-        try:
-            with open(path, "r") as f:
-                content = f.read()
-
-            # Apply template variables
-            content = _apply_template_variables(content, metrics, customer_name)
-
-            # Convert markdown to HTML
-            html_content = markdown.markdown(content)
-            return html_content
-
-        except Exception as e:
-            logger.warning(f"Could not load appendix: {e}")
-            return None
+        return load_and_convert_markdown(
+            path,
+            section_name="appendix",
+            template_processor=lambda content: _apply_template_variables(
+                content, metrics, customer_name
+            ),
+        )
 
     def _get_embedded_css(self) -> str:
         """Return embedded CSS content loaded from external file."""

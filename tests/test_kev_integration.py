@@ -210,8 +210,8 @@ class TestKEVCaching:
 
         cache.put(analysis)
 
-        # Retrieve from cache
-        cached = cache.get("python:3.12", "sha256:abc123")
+        # Retrieve from cache - must specify require_kevs=True to match cached data
+        cached = cache.get("python:3.12", "sha256:abc123", require_kevs=True)
 
         assert cached is not None
         assert cached.kev_count == 2

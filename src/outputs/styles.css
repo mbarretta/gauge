@@ -847,3 +847,179 @@ em {
     font-style: normal;
     font-weight: 500;
 }
+
+/* ========================================================================
+   Pricing Quote Specific Styles
+   ======================================================================== */
+
+.pricing-section {
+    margin-top: 0;
+    padding: 30px;
+    border: 2px solid var(--cg-light);
+    background: var(--cg-white);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(20, 0, 61, 0.08);
+}
+
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: var(--cg-gray-light);
+    border-radius: 8px;
+    border: 1px solid var(--cg-light);
+}
+
+.info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.info-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--cg-gray-dark);
+}
+
+.info-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--cg-primary);
+}
+
+.table-container {
+    width: 100%;
+    overflow: visible;
+    margin: 20px 0;
+    border-radius: 12px;
+    box-shadow: 0 8px 16px -4px rgba(20, 0, 61, 0.12);
+    background: var(--cg-white);
+}
+
+.table-container table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 2px solid var(--cg-light);
+}
+
+.table-container th,
+.table-container td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--cg-gray-medium);
+    text-align: left;
+    font-size: 13px;
+}
+
+.table-container th {
+    background: var(--cg-primary);
+    color: var(--cg-white);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.table-container th.number {
+    text-align: right;
+}
+
+.table-container td.number {
+    text-align: right;
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-weight: 600;
+}
+
+.table-container tbody tr:nth-child(even) {
+    background-color: var(--cg-gray-light);
+}
+
+.table-container tbody tr:nth-child(odd) {
+    background-color: var(--cg-white);
+}
+
+.table-container tbody tr:hover {
+    background-color: rgba(116, 69, 251, 0.08);
+}
+
+/* Grand total row in pricing table */
+.grand-total-row {
+    background: linear-gradient(135deg, #7af0fe 0%, #a7f3d0 100%) !important;
+    border-top: 3px solid var(--cg-primary) !important;
+}
+
+.grand-total-row td {
+    padding: 16px !important;
+    font-size: 16px !important;
+    border-bottom: none !important;
+}
+
+.grand-total-row .total-label {
+    text-align: right;
+    color: var(--cg-primary);
+}
+
+.grand-total-row .total-amount {
+    color: var(--cg-primary);
+    font-size: 18px !important;
+}
+
+/* Tier colors */
+.tier-base {
+    color: var(--cg-secondary);
+    font-weight: 600;
+}
+
+.tier-application {
+    color: var(--cg-accent);
+    font-weight: 600;
+}
+
+.tier-fips {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.tier-ai {
+    color: #ea580c;
+    font-weight: 600;
+}
+
+.pricing-notes {
+    margin-top: 30px;
+    padding: 20px;
+    background: var(--cg-gray-light);
+    border-left: 4px solid var(--cg-accent);
+    border-radius: 4px;
+}
+
+.pricing-notes p {
+    margin: 8px 0;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.pricing-notes strong {
+    color: var(--cg-primary);
+}
+
+@media print {
+    .pricing-section {
+        page-break-inside: avoid;
+    }
+
+    .table-container {
+        page-break-inside: avoid;
+    }
+
+    .grand-total-row {
+        page-break-before: avoid;
+    }
+}

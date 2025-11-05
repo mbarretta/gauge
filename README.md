@@ -37,10 +37,10 @@
 ## Features
 
 ### Core Capabilities
-- **Dual Output Types**: Generate vulnerability assessment summaries (HTML) or cost analysis reports (XLSX)
+- **Multiple Output Types**: Generate vulnerability summaries (HTML), cost analysis (XLSX), or pricing quotes (HTML + TXT)
 - **CHPs Scoring**: Container Hardening and Provenance Scanner integration for evaluating non-CVE security factors like provenance, SBOM quality, signing, and container hardening practices
 - **KEV Detection**: Optional integration with CISA's Known Exploited Vulnerabilities catalog to identify actively exploited CVEs in your images
-- **Intelligent Caching**: Digest-based caching dramatically improves performance on repeated scans
+- **Intelligent Caching**: Digest-based caching with exact flag matching dramatically improves performance on repeated scans
 - **Checkpoint/Resume**: Automatically save progress and resume interrupted scans without losing work
 - **Parallel Scanning**: Multi-threaded image scanning for optimal performance
 - **Comprehensive Analysis**: Detailed vulnerability breakdowns by severity (Critical, High, Medium, Low, Negligible)
@@ -61,6 +61,15 @@
 - Auto-detection of FIPS images
 - Interactive formulas for scenario planning
 - Focus: Financial planning and business case development
+
+### Pricing Quote (HTML + TXT)
+- Automated pricing quotes based on Chainguard image tiers (base, application, fips, ai)
+- Automatic image tier classification via GitHub metadata
+- Volume-based pricing with bulk discounts
+- Configurable pricing policies per customer/partner
+- Professional HTML quotes with customer branding and plain text versions for email
+- Includes policy details, line items, and totals
+- Focus: Sales enablement and subscription estimates
 
 ## Prerequisites
 
@@ -255,8 +264,9 @@ Optional header row is automatically skipped.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-s, --source` | `images.csv` | Source CSV file with image pairs |
-| `-o, --output` | `both` | Output type: `cost_analysis` (XLSX), `vuln_summary` (HTML), or `both` |
+| `-o, --output` | All three types | Output types to generate (comma-separated): `cost_analysis` (XLSX), `vuln_summary` (HTML), `pricing` (HTML + TXT). Default generates all three. Examples: `--output pricing`, `--output cost_analysis,pricing` |
 | `--output-dir` | `.` (current directory) | Output directory for generated reports |
+| `--pricing-policy` | `pricing-policy.yaml` | Pricing policy file for quote generation (see [Pricing Configuration](#pricing-configuration)) |
 
 ### Common Options
 
@@ -327,6 +337,131 @@ See `sample-exec-summary.md` and `sample-appendix.md` for complete examples.
 |--------|---------|-------------|
 | `--with-kevs` | - | Check CVEs against CISA's Known Exploited Vulnerabilities catalog and highlight them in reports |
 
+### Pricing Configuration
+
+The pricing quote feature automatically generates subscription cost estimates based on the Chainguard images in your assessment. It classifies images by tier (base, application, fips, ai) and applies volume-based pricing with bulk discounts.
+
+#### Prerequisites
+
+1. **Pricing Policy File**: Create or customize `pricing-policy.yaml` from the example:
+   ```bash
+   cp example-pricing-policy.yaml pricing-policy.yaml
+   # Edit pricing-policy.yaml to match your pricing structure
+   ```
+
+2. **GitHub Authentication** (for automatic image tier classification):
+
+   Gauge needs access to the private `chainguard-images/images-private` repository to classify images by tier. Choose one of these authentication methods:
+
+   **Option 1: GitHub CLI (Recommended)**
+   ```bash
+   # Install gh CLI if not already installed
+   brew install gh  # macOS
+   # or: https://cli.github.com/
+
+   # Authenticate
+   gh auth login
+   ```
+   Gauge will automatically use the `gh` CLI token.
+
+   **Option 2: Environment Variable**
+   ```bash
+   export GITHUB_TOKEN="your_personal_access_token"
+   ```
+   Create a Personal Access Token at: https://github.com/settings/tokens
+
+   Required scopes: `repo` (for private repository access)
+
+#### Image Tier Classification
+
+Gauge automatically classifies Chainguard images into pricing tiers:
+
+- **base** - Minimal OS and language runtimes (python, node, golang-base, etc.)
+- **application** - Full applications, databases, web servers (nginx, postgres, redis, etc.)
+- **fips** - FIPS 140-2/140-3 validated images (python-fips, nginx-fips, etc.)
+- **ai** - Machine learning and AI framework images (pytorch, tensorflow, etc.)
+
+The classification:
+1. Checks local tier mappings in `config/image_tiers.yaml` (cached from previous runs)
+2. Fetches unknown images from GitHub metadata
+3. Auto-saves new classifications for team sharing
+4. Prompts to commit updated `image_tiers.yaml` to version control
+
+#### Pricing Policy Format
+
+The pricing policy YAML file defines tier-based pricing with volume discounts:
+
+```yaml
+# Base images pricing
+base:
+  - min: 1
+    max: 10
+    list_price: 29000  # $290.00 list price per image (prices in cents)
+    discount_percent: 0  # No discount
+  - min: 11
+    max: 25
+    list_price: 29000  # $290.00 list price
+    discount_percent: 10  # 10% discount = $261.00 final price
+  - min: 26
+    max: null  # null = unlimited
+    list_price: 29000  # $290.00 list price
+    discount_percent: 20  # 20% discount = $232.00 final price
+
+# Application images pricing
+application:
+  - min: 1
+    max: 10
+    list_price: 35000  # $350.00 list price per image
+    discount_percent: 0
+  # ... additional ranges
+
+# Metadata
+policy_name: "Standard Enterprise Pricing"
+effective_date: "2025-01-01"
+currency: "USD"
+pricing_unit: "per image per year"
+notes: |
+  - All prices are annual subscription fees
+  - Volume discounts apply within each tier independently
+  - Contact sales@chainguard.dev for custom pricing
+```
+
+**Pricing Calculation:**
+- `list_price`: The list price per image (before any discounts)
+- `discount_percent`: Discount percentage as a float (e.g., `10` for 10%, `20.5` for 20.5%)
+- **Discounted price is automatically calculated**: `list_price * (1 - discount_percent/100)`
+- Example: `list_price: 29000` with `discount_percent: 10` yields final price of $261.00
+
+See `example-pricing-policy.yaml` for a complete example with all four tiers.
+
+#### Usage Examples
+
+```bash
+# Generate only pricing quote
+gauge --source images.csv --customer "Acme Corp" --output pricing
+
+# Generate pricing + cost analysis
+gauge --output pricing,cost_analysis
+
+# Use custom pricing policy
+gauge --pricing-policy custom-pricing.yaml --output pricing
+
+# Generate all outputs (default)
+gauge --source images.csv --customer "Acme Corp"
+```
+
+#### Output
+
+The pricing quote generator creates a professional HTML report (`{customer}_pricing_quote.html`) containing:
+- Customer name and quote date
+- Policy name and effective date
+- Line items by tier with quantities, prices, and specific image names
+- Volume discounts automatically applied
+- Subtotal and grand total
+- Policy notes and contact information
+
+Images are listed under their respective tiers, making it easy to see which specific images are included in each pricing tier.
+
 ### Cache Options
 
 | Option | Default | Description |
@@ -344,6 +479,7 @@ Gauge includes two complementary performance systems:
 
 ### Intelligent Caching
 - **Digest-based**: Uses image SHA256 digests as cache keys
+- **Exact flag matching**: Cache validated against CHPS/KEV/FIPS flags (e.g., running without `--with-chps` invalidates cache entries that have CHPS data)
 - **Automatic freshness**: Only pulls when remote digest differs
 - **Platform-aware**: Different cache per platform (linux/amd64, linux/arm64, etc.)
 - **Portable**: Cache can be shared between machines
@@ -529,107 +665,23 @@ gauge --source large-fleet.csv \
 
 ```
 gauge/
-├── src/                              # Source code
-│   ├── core/                         # Core functionality
-│   │   ├── cache.py                 # Digest-based scan caching with CHPS/KEV awareness
-│   │   ├── exceptions.py            # Exception hierarchy (GaugeException, ScanException, etc.)
-│   │   ├── models.py                # Data models (ImageAnalysis, ScanResult, CHPSScore)
-│   │   ├── persistence.py           # Checkpoint/resume functionality
-│   │   ├── scanner.py               # Vulnerability scanner orchestration
-│   │   └── scanner_interface.py    # Scanner plugin interface (VulnerabilityProvider)
-│   ├── integrations/                # External tool integrations
-│   │   ├── chainguard_api.py       # Chainguard API client for CVE growth rates
-│   │   ├── grype_provider.py       # Grype scanner provider implementation
-│   │   └── kev_catalog.py          # CISA KEV catalog integration with O(1) lookups
-│   ├── outputs/                     # Report generators
-│   │   ├── base.py                 # Base generator interface
-│   │   ├── config.py               # Generator configuration dataclasses
-│   │   ├── html_generator.py      # HTML assessment summary generator
-│   │   ├── styles.css              # External CSS styles for HTML reports
-│   │   ├── xlsx_formats.py         # XLSX formatting styles (factory pattern)
-│   │   ├── xlsx_generator.py      # XLSX cost analysis generator
-│   │   └── xlsx_writers.py         # XLSX section writers (modular components)
-│   ├── utils/                       # Utility modules
-│   │   ├── chps_utils.py           # CHPS (Container Hardening) integration
-│   │   ├── cve_ratios.py           # CVE growth rate calculation with API fallback
-│   │   ├── docker_utils.py         # Docker/Podman operations with intelligent fallback
-│   │   ├── fips_calculator.py      # FIPS implementation cost calculations
-│   │   ├── metrics_calculator.py   # CVE reduction metrics calculation
-│   │   ├── roi_calculator.py       # ROI and CVE cost projections
-│   │   ├── validation.py           # Input validation utilities
-│   │   └── vulnerability_utils.py  # Vulnerability aggregation logic
-│   ├── constants.py                 # Centralized configuration constants
-│   └── cli.py                       # Command-line interface with modular helper functions
-├── tests/                            # Unit tests (pytest)
-│   ├── conftest.py                  # Shared test fixtures
-│   ├── test_models.py              # Model tests
-│   └── test_validation.py          # Validation tests
-├── resources/                        # Static resources
-│   ├── gauge-logo-black.png        # Gauge logo (dark backgrounds)
-│   ├── gauge-logo-white.png        # Gauge logo (light backgrounds)
-│   └── linky-white.png             # Chainguard logo for HTML reports
-├── pytest.ini                        # Pytest configuration
-├── example-images.csv               # Sample image pairs for testing
-├── sample-exec-summary.md           # Example executive summary template
-├── sample-appendix.md               # Example appendix template
-├── requirements.txt                 # Python dependencies
-├── setup.py                         # Package installation config
-├── MIGRATION.md                     # Migration guide from legacy tools
-└── README.md                        # This file
+├── src/                    # Source code (core, integrations, outputs, utils)
+├── tests/                  # Unit and integration tests (188 tests)
+├── config/                 # Configuration files
+├── resources/              # Static assets (logos, images)
+├── example-images.csv      # Sample input file
+├── sample-exec-summary.md  # Example template
+├── sample-appendix.md      # Example template
+├── example-pricing-policy.yaml  # Pricing policy example
+├── requirements.txt        # Python dependencies
+├── setup.py                # Package configuration
+├── Dockerfile              # Container build
+├── README.md               # User documentation (this file)
+├── CONTRIBUTING.md         # Developer documentation
+└── MIGRATION.md            # Legacy tool migration guide
 ```
 
-### Key Components
-
-**Core Modules:**
-- `scanner.py`: Orchestrates Syft (SBOM) → Grype (CVE scanning) → CHPS (hardening) → KEV detection pipeline
-- `cache.py`: Digest-based caching with CHPS and KEV awareness for performance optimization
-- `models.py`: Immutable data structures for type safety
-- `exceptions.py`: Standardized exception hierarchy for consistent error handling
-- `persistence.py`: Checkpoint/resume functionality for long-running scans
-- `scanner_interface.py`: Plugin interface for extensible scanner integration
-
-**Report Generators:**
-- `html_generator.py`: Professional assessment summaries with Chainguard branding, loads CSS from external file
-- `styles.css`: Externalized CSS styles (851 lines) for HTML reports, enabling easier customization
-- `xlsx_generator.py`: Interactive cost analysis with ROI calculations
-- `xlsx_writers.py`: Modular section writers following single-responsibility principle
-- `xlsx_formats.py`: Formatting factory pattern eliminates style duplication
-- `config.py`: Strongly-typed generator configuration dataclasses
-
-**Integrations:**
-- `grype_provider.py`: Grype scanner provider implementing plugin interface
-- `chainguard_api.py`: Chainguard API client for dynamic CVE growth rates
-- `kev_catalog.py`: CISA Known Exploited Vulnerabilities catalog with O(1) dictionary lookups
-- `chps_utils.py`: Containerized CHPS execution with score recalculation
-
-**Utilities:**
-- `validation.py`: Comprehensive input validation (images, paths, numbers, names)
-- `vulnerability_utils.py`: Centralized vulnerability aggregation logic
-- `metrics_calculator.py`: Extracted CVE reduction metrics calculation for separation of concerns
-- `cve_ratios.py`: CVE growth rate calculation with API fallback
-- `docker_utils.py`: Unified Docker/Podman interface with intelligent multi-strategy fallback (mirror.gcr.io, :latest)
-- `roi_calculator.py`: ROI and CVE cost projections
-- `fips_calculator.py`: FIPS implementation cost calculations
-
-**Tests:**
-- `conftest.py`: Shared pytest fixtures for test data and temporary resources
-- `test_models.py`: Comprehensive model tests (immutability, serialization)
-- `test_validation.py`: Input validation tests (edge cases, error handling)
-
-**Resources:**
-- `linky-white.png`: Chainguard logo embedded in HTML header
-- `gauge-logo-*.png`: Gauge branding for documentation
-- `pytest.ini`: Pytest configuration with markers and coverage options
-
-### Design Principles
-
-- **SOLID Principles**: Clean interfaces, single responsibilities, separation of concerns
-- **Immutable Data**: Frozen dataclasses prevent accidental mutation
-- **Type Safety**: Comprehensive type hints throughout
-- **Modern Python**: Uses `src/` layout (Python best practice)
-- **Dependency Injection**: Testable, mockable components
-- **Performance Optimization**: O(1) lookups, caching, parallel processing
-- **Modularity**: Extracted utilities and helpers for maintainability
+For detailed architecture, module organization, and development guidelines, see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
 
 ## Development
 
@@ -679,17 +731,31 @@ If you're migrating from `cg_assessment` or `minibva`, see **[MIGRATION.md](MIGR
 
 ## Contributing
 
-Gauge consolidates and improves upon two previous tools:
-- `cg_assessment`: HTML/PDF report generator
-- `minibva`: XLSX ROI calculator
+Contributions are welcome! For detailed information on:
+- Development setup and environment
+- Project architecture and design principles
+- Code organization and module responsibilities
+- Testing guidelines and procedures
+- Code style and documentation standards
+- Common development tasks
+- Pull request process
 
-The unified tool maintains 100% feature parity with both while adding:
-- Cleaner architecture with `src/` layout
-- Better error handling
-- Improved performance with intelligent caching
-- Enhanced logging and debugging
-- Type safety throughout
-- Modular design for easy maintenance
+Please see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+
+### Quick Start for Contributors
+
+```bash
+# Clone and setup
+git clone <repository-url>
+cd gauge
+pip install -r requirements.txt
+pip install -e .
+
+# Run tests
+pytest
+
+# See CONTRIBUTING.md for detailed guidelines
+```
 
 ## License
 

@@ -82,12 +82,12 @@ class ScanCache:
             image_name: Image reference
             digest: Image digest (sha256)
             require_chps: If True, only return cached results that have CHPS scores.
-                         If False, return cached results regardless of CHPS presence.
+                         If False, only return cached results that don't have CHPS scores.
             require_kevs: If True, only return cached results that have KEV data.
-                         If False, return cached results regardless of KEV presence.
+                         If False, only return cached results that don't have KEV data.
 
         Returns:
-            Cached ImageAnalysis if available and matches requirements, None otherwise
+            Cached ImageAnalysis if available and exactly matches requirements, None otherwise
         """
         if not self.enabled or not digest:
             self.misses += 1
@@ -110,25 +110,37 @@ class ScanCache:
                 self.misses += 1
                 return None
 
-            # Validate CHPS requirement matches
-            # If CHPS is required but cached result doesn't have it, we need to re-scan
-            # If CHPS is not required, we can use cached results regardless of whether they have CHPS
+            # Validate CHPS requirement matches exactly
+            # Cache must match the current run configuration exactly:
+            # - If CHPS is required, cached result must have CHPS
+            # - If CHPS is not required, cached result must NOT have CHPS
             has_chps = data.get("chps_score") is not None
-            if require_chps and not has_chps:
-                logger.debug(
-                    f"Cache miss for {image_name}: CHPS score required but cached result has none"
-                )
+            if require_chps != has_chps:
+                if require_chps:
+                    logger.debug(
+                        f"Cache miss for {image_name}: CHPS score required but cached result has none"
+                    )
+                else:
+                    logger.debug(
+                        f"Cache miss for {image_name}: CHPS score not required but cached result has it"
+                    )
                 self.misses += 1
                 return None
 
-            # Validate KEV requirement matches
-            # If KEV is required but cached result doesn't have it, we need to re-scan
-            # If KEV is not required, we can use cached results regardless of whether they have KEV data
+            # Validate KEV requirement matches exactly
+            # Cache must match the current run configuration exactly:
+            # - If KEV is required, cached result must have KEV data
+            # - If KEV is not required, cached result must NOT have KEV data
             has_kevs = data.get("kev_count", 0) > 0 or len(data.get("kev_cves", [])) > 0
-            if require_kevs and not has_kevs:
-                logger.debug(
-                    f"Cache miss for {image_name}: KEV data required but cached result has none"
-                )
+            if require_kevs != has_kevs:
+                if require_kevs:
+                    logger.debug(
+                        f"Cache miss for {image_name}: KEV data required but cached result has none"
+                    )
+                else:
+                    logger.debug(
+                        f"Cache miss for {image_name}: KEV data not required but cached result has it"
+                    )
                 self.misses += 1
                 return None
 

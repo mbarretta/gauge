@@ -11,6 +11,7 @@ import csv
 import logging
 import sys
 from pathlib import Path
+from typing import Optional
 
 from constants import (
     DEFAULT_HOURS_PER_VULNERABILITY,
@@ -25,8 +26,35 @@ from integrations.kev_catalog import KEVCatalog
 from outputs.html_generator import HTMLGenerator
 from outputs.xlsx_generator import XLSXGenerator
 from utils.docker_utils import DockerClient
+from utils.logging_helpers import log_error_section, log_warning_section
 
 logger = logging.getLogger(__name__)
+
+
+# Output configuration for all report types
+OUTPUT_CONFIGS = {
+    "vuln_summary": {
+        "description": "Vulnerability Assessment Summary (HTML)",
+        "file_suffix": "assessment.html",
+    },
+    "cost_analysis": {
+        "description": "Vulnerability Cost Analysis (XLSX)",
+        "file_suffix": "cost_analysis.xlsx",
+    },
+    "pricing": {
+        "description": "Pricing Quote",
+        "formats": {
+            "html": {
+                "file_suffix": "pricing_quote.html",
+                "description": "Pricing Quote (HTML)",
+            },
+            "txt": {
+                "file_suffix": "pricing_quote.txt",
+                "description": "Pricing Quote (TXT)",
+            },
+        },
+    },
+}
 
 
 def setup_logging(verbose: bool = False):
@@ -39,8 +67,13 @@ def setup_logging(verbose: bool = False):
     )
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments."""
+def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Args:
+        args: Optional list of arguments to parse (for testing).
+              If None, uses sys.argv.
+    """
     parser = argparse.ArgumentParser(
         description="Gauge - Container Vulnerability Assessment Tool",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -83,15 +116,25 @@ Examples:
     io_group.add_argument(
         "-o",
         "--output",
-        choices=["cost_analysis", "vuln_summary", "both"],
-        default="both",
-        help="Output type: 'cost_analysis' (XLSX), 'vuln_summary' (HTML), or 'both' (default: both)",
+        type=str,
+        default=None,
+        help=(
+            "Output types to generate (comma-separated): 'cost_analysis' (XLSX), "
+            "'vuln_summary' (HTML), 'pricing' (price quote). "
+            "Default: all three types. Example: --output cost_analysis,pricing"
+        ),
     )
     io_group.add_argument(
         "--output-dir",
         type=Path,
         default=Path("."),
         help="Output directory for generated reports (default: current directory)",
+    )
+    io_group.add_argument(
+        "--pricing-policy",
+        type=Path,
+        default=Path("pricing-policy.yaml"),
+        help="Pricing policy file for quote generation (default: pricing-policy.yaml)",
     )
 
     # Common options
@@ -212,7 +255,7 @@ Examples:
         help="Enable verbose logging",
     )
 
-    return parser.parse_args()
+    return parser.parse_args(args)
 
 
 def load_image_pairs(csv_path: Path) -> list[ImagePair]:
@@ -306,6 +349,42 @@ def load_image_pairs(csv_path: Path) -> list[ImagePair]:
     return pairs
 
 
+
+
+def parse_output_types(output_arg: Optional[str]) -> set[str]:
+    """
+    Parse comma-delimited output types argument.
+
+    Args:
+        output_arg: Comma-delimited output types or None for all
+
+    Returns:
+        Set of output types to generate
+
+    Raises:
+        ValueError: If invalid output type specified
+    """
+    valid_types = set(OUTPUT_CONFIGS.keys())
+
+    # Default to all types if not specified
+    if output_arg is None:
+        return valid_types.copy()
+
+    # Parse comma-delimited list
+    requested_types = {t.strip() for t in output_arg.split(",")}
+
+    # Validate types
+    invalid_types = requested_types - valid_types
+    if invalid_types:
+        raise ValueError(
+            f"Invalid output type(s): {', '.join(invalid_types)}. "
+            f"Valid types: {', '.join(valid_types)}"
+        )
+
+    if not requested_types:
+        raise ValueError("At least one output type must be specified")
+
+    return requested_types
 
 
 def sanitize_customer_name(name: str) -> str:
@@ -440,89 +519,110 @@ def execute_scans(args, scanner, pairs):
     return results
 
 
-def generate_reports(args, results, kev_catalog, safe_customer_name):
+def generate_pricing_quote(args, results, safe_customer_name):
     """
-    Generate output reports based on requested format.
+    Generate pricing quote reports (HTML and TXT).
+
+    Args:
+        args: Parsed command-line arguments
+        results: List of ScanResult objects
+        safe_customer_name: Sanitized customer name for filenames
+
+    Returns:
+        Dictionary mapping output type to generated file path
+        (keys: 'pricing_html', 'pricing_text')
+    """
+    from utils.image_classifier import ImageClassifier
+    from utils.pricing_calculator import PricingCalculator
+    from outputs.pricing_quote_generator import PricingQuoteGenerator
+    from collections import Counter, defaultdict
+
+    output_files = {}
+
+    try:
+        # Load pricing policy
+        if not args.pricing_policy.exists():
+            raise FileNotFoundError(
+                f"Pricing policy file not found: {args.pricing_policy}. "
+                f"Use --pricing-policy to specify a policy file, or create one based on example-pricing-policy.yaml"
+            )
+
+        calculator = PricingCalculator.from_policy_file(args.pricing_policy)
+        logger.info(f"Loaded pricing policy: {calculator.policy.policy_name}")
+
+        # Classify Chainguard images by tier
+        logger.info("Classifying Chainguard images by tier...")
+        github_token = None  # Will use GITHUB_TOKEN env var if available
+        classifier = ImageClassifier(github_token=github_token, auto_update=True)
+
+        # Extract Chainguard images from results
+        chainguard_images = [r.pair.chainguard_image for r in results if r.scan_successful]
+
+        # Classify images by tier and collect image names
+        tier_images = defaultdict(list)
+        tier_counts = Counter()
+
+        for image in chainguard_images:
+            try:
+                tier = classifier.get_image_tier(image)
+                tier_counts[tier] += 1
+                tier_images[tier].append(image)
+            except ValueError as e:
+                logger.warning(f"Could not classify image {image}: {e}")
+
+        if not tier_counts:
+            logger.warning("No images could be classified for pricing. Skipping pricing quote generation.")
+        else:
+            # Calculate quote with image names
+            quote_data = calculator.calculate_quote(dict(tier_counts), dict(tier_images))
+
+            # Generate quote output (both text and HTML)
+            generator = PricingQuoteGenerator(customer_name=args.customer_name)
+
+            # Generate HTML quote
+            html_path = args.output_dir / f"{safe_customer_name}_pricing_quote.html"
+            generator.generate_html_quote(quote_data, html_path)
+            output_files["pricing_html"] = html_path
+
+            # Generate text quote
+            text_path = args.output_dir / f"{safe_customer_name}_pricing_quote.txt"
+            generator.generate_text_quote(quote_data, text_path)
+            output_files["pricing_text"] = text_path
+
+    except FileNotFoundError as e:
+        logger.error(f"Pricing quote generation failed: {e}")
+        logger.error("Skipping pricing quote generation.")
+    except Exception as e:
+        logger.error(f"Error generating pricing quote: {e}")
+        logger.error("Skipping pricing quote generation.")
+
+    return output_files
+
+
+def generate_reports(args, results, kev_catalog, safe_customer_name, output_types):
+    """
+    Generate output reports based on requested types.
 
     Args:
         args: Parsed command-line arguments
         results: List of ScanResult objects
         kev_catalog: KEVCatalog instance or None
         safe_customer_name: Sanitized customer name for filenames
+        output_types: Set of output types to generate
 
     Returns:
-        List of generated output file paths
+        Dictionary mapping output type to generated file path
     """
     from outputs.config import HTMLGeneratorConfig, XLSXGeneratorConfig
 
     # Create output directory
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_format = args.output
-    output_files = []
+    output_files = {}
 
-    if output_format == "both":
-        # Generate both outputs
-        html_path = args.output_dir / f"{safe_customer_name}.html"
-        xlsx_path = args.output_dir / f"{safe_customer_name}.xlsx"
-
-        # Generate HTML assessment summary
-        html_generator = HTMLGenerator()
-        exec_summary = args.exec_summary if args.exec_summary.exists() else None
-        appendix = args.appendix if args.appendix.exists() else None
-        html_config = HTMLGeneratorConfig(
-            customer_name=args.customer_name,
-            platform=args.platform,
-            exec_summary_path=exec_summary,
-            appendix_path=appendix,
-            kev_catalog=kev_catalog,
-        )
-        html_generator.generate(
-            results=results,
-            output_path=html_path,
-            config=html_config,
-        )
-
-        # Generate XLSX cost analysis
-        xlsx_generator = XLSXGenerator()
-        xlsx_config = XLSXGeneratorConfig(
-            customer_name=args.customer_name,
-            platform=args.platform,
-            hours_per_vuln=args.hours_per_vuln,
-            hourly_rate=args.hourly_rate,
-            auto_detect_fips=args.with_fips,
-            kev_catalog=kev_catalog,
-        )
-        xlsx_generator.generate(
-            results=results,
-            output_path=xlsx_path,
-            config=xlsx_config,
-        )
-
-        output_files = [html_path, xlsx_path]
-
-    elif output_format == "cost_analysis":
-        # Generate XLSX cost analysis
-        xlsx_path = args.output_dir / f"{safe_customer_name}.xlsx"
-        generator = XLSXGenerator()
-        xlsx_config = XLSXGeneratorConfig(
-            customer_name=args.customer_name,
-            platform=args.platform,
-            hours_per_vuln=args.hours_per_vuln,
-            hourly_rate=args.hourly_rate,
-            auto_detect_fips=args.with_fips,
-            kev_catalog=kev_catalog,
-        )
-        generator.generate(
-            results=results,
-            output_path=xlsx_path,
-            config=xlsx_config,
-        )
-        output_files = [xlsx_path]
-
-    elif output_format == "vuln_summary":
-        # Generate HTML assessment summary
-        html_path = args.output_dir / f"{safe_customer_name}.html"
+    # Generate HTML assessment summary
+    if "vuln_summary" in output_types:
+        html_path = args.output_dir / f"{safe_customer_name}_assessment.html"
         generator = HTMLGenerator()
         exec_summary = args.exec_summary if args.exec_summary.exists() else None
         appendix = args.appendix if args.appendix.exists() else None
@@ -538,7 +638,31 @@ def generate_reports(args, results, kev_catalog, safe_customer_name):
             output_path=html_path,
             config=html_config,
         )
-        output_files = [html_path]
+        output_files["vuln_summary"] = html_path
+
+    # Generate XLSX cost analysis
+    if "cost_analysis" in output_types:
+        xlsx_path = args.output_dir / f"{safe_customer_name}_cost_analysis.xlsx"
+        generator = XLSXGenerator()
+        xlsx_config = XLSXGeneratorConfig(
+            customer_name=args.customer_name,
+            platform=args.platform,
+            hours_per_vuln=args.hours_per_vuln,
+            hourly_rate=args.hourly_rate,
+            auto_detect_fips=args.with_fips,
+            kev_catalog=kev_catalog,
+        )
+        generator.generate(
+            results=results,
+            output_path=xlsx_path,
+            config=xlsx_config,
+        )
+        output_files["cost_analysis"] = xlsx_path
+
+    # Generate pricing quote
+    if "pricing" in output_types:
+        pricing_files = generate_pricing_quote(args, results, safe_customer_name)
+        output_files.update(pricing_files)
 
     return output_files
 
@@ -551,21 +675,189 @@ def main():
     logger.info("Gauge - Container Vulnerability Assessment v2.0")
     logger.info("=" * 60)
 
-    # Determine output type from args.output
-    output_format = args.output
-    if output_format == "both":
-        output_type = "Both Assessment Summary (HTML) and Cost Analysis (XLSX)"
-    elif output_format == "cost_analysis":
-        output_type = "Vulnerability Cost Analysis (XLSX)"
-    else:  # vuln_summary
-        output_type = "Vulnerability Assessment Summary (HTML)"
-    logger.info(f"Output type: {output_type}")
+    # Parse output types
+    try:
+        output_types = parse_output_types(args.output)
+    except ValueError as e:
+        logger.error(f"Invalid output specification: {e}")
+        sys.exit(1)
+
+    # Build output description from OUTPUT_CONFIGS
+    output_names = {}
+    for output_type, config in OUTPUT_CONFIGS.items():
+        output_names[output_type] = config["description"]
+        # Add format-specific descriptions for multi-format outputs
+        if "formats" in config:
+            for format_key, format_config in config["formats"].items():
+                output_names[f"{output_type}_{format_key}"] = format_config["description"]
+
+    output_list = [output_names[t] for t in sorted(output_types)]
+    logger.info(f"Output types: {', '.join(output_list)}")
 
     # Load image pairs
     pairs = load_image_pairs(args.source)
 
     # Initialize components
     docker_client, cache, kev_catalog = initialize_components(args)
+
+    # Validate GitHub authentication if pricing output requested
+    if "pricing" in output_types:
+        from integrations.github_metadata import GitHubMetadataClient
+
+        # Check pricing policy file exists
+        if not args.pricing_policy.exists():
+            log_error_section(
+                "Pricing quote generation requires a pricing policy file.",
+                [
+                    f"Pricing policy file not found: {args.pricing_policy}",
+                    "",
+                    "To create a pricing policy:",
+                    "  cp example-pricing-policy.yaml pricing-policy.yaml",
+                    "  # Edit pricing-policy.yaml to match your pricing structure",
+                    "",
+                    "Or specify a custom policy file:",
+                    "  gauge --pricing-policy /path/to/policy.yaml",
+                ],
+                logger=logger,
+            )
+            sys.exit(1)
+
+        # Test GitHub authentication
+        logger.info("Validating GitHub authentication for pricing tier classification...")
+        test_client = GitHubMetadataClient()
+
+        if not test_client.token:
+            log_error_section(
+                "Pricing quote generation requires GitHub authentication.",
+                [
+                    "",
+                    "Gauge needs access to chainguard-images/images-private repository",
+                    "to classify images by pricing tier (base, application, fips, ai).",
+                    "",
+                    "To authenticate, choose one of these options:",
+                    "",
+                    "Option 1: GitHub CLI (Recommended)",
+                    "  gh auth login",
+                    "",
+                    "Option 2: Personal Access Token",
+                    "  export GITHUB_TOKEN='your_token_here'",
+                    "  # Create token at: https://github.com/settings/tokens",
+                    "  # Required scopes: repo (for private repository access)",
+                    "",
+                ],
+                logger=logger,
+            )
+            sys.exit(1)
+
+        # Test repository access with a lightweight API call
+        logger.debug("Testing GitHub repository access...")
+        try:
+            import requests
+            test_url = "https://api.github.com/repos/chainguard-images/images-private"
+            response = requests.get(
+                test_url,
+                headers={"Authorization": f"token {test_client.token}"},
+                timeout=5
+            )
+            response.raise_for_status()
+            logger.info("✓ GitHub authentication configured")
+        except requests.HTTPError as e:
+            if e.response.status_code == 403:
+                # Check for SAML SSO issue
+                is_saml_issue = False
+                try:
+                    error_json = e.response.json()
+                    if "SAML" in error_json.get("message", ""):
+                        is_saml_issue = True
+                except:
+                    pass
+
+                if is_saml_issue:
+                    log_warning_section(
+                        "GitHub token needs SAML SSO authorization.",
+                        [
+                            "",
+                            "Attempting to refresh token via gh CLI...",
+                        ],
+                        logger=logger,
+                    )
+
+                    # Try to refresh the token via gh CLI
+                    try:
+                        import subprocess
+                        result = subprocess.run(
+                            ["gh", "auth", "refresh", "--hostname", "github.com", "-s", "repo"],
+                            capture_output=True,
+                            text=True,
+                            timeout=60
+                        )
+
+                        if result.returncode == 0:
+                            logger.info("✓ Token refreshed successfully")
+                            logger.info("Retrying repository access...")
+
+                            # Retry with new token
+                            from integrations.github_metadata import get_github_token_from_gh_cli
+                            new_token = get_github_token_from_gh_cli()
+                            if new_token:
+                                retry_response = requests.get(
+                                    test_url,
+                                    headers={"Authorization": f"token {new_token}"},
+                                    timeout=5
+                                )
+                                retry_response.raise_for_status()
+                                logger.info("✓ GitHub authentication configured")
+                                # Success - continue execution
+                            else:
+                                raise Exception("Failed to get refreshed token")
+                        else:
+                            raise Exception(f"gh auth refresh failed: {result.stderr}")
+
+                    except FileNotFoundError:
+                        logger.error("")
+                        logger.error("gh CLI not found. Please install it:")
+                        logger.error("  brew install gh  # macOS")
+                        logger.error("  # or visit: https://cli.github.com/")
+                        logger.error("")
+                        logger.error("Then run: gh auth login")
+                        logger.error("=" * 60)
+                        sys.exit(1)
+                    except subprocess.TimeoutExpired:
+                        logger.error("")
+                        logger.error("Token refresh timed out.")
+                        logger.error("Please run manually: gh auth refresh --hostname github.com -s repo")
+                        logger.error("=" * 60)
+                        sys.exit(1)
+                    except Exception as refresh_error:
+                        logger.error("")
+                        logger.error(f"Failed to refresh token: {refresh_error}")
+                        logger.error("")
+                        logger.error("Manual steps:")
+                        logger.error("  1. Run: gh auth refresh --hostname github.com -s repo")
+                        logger.error("  2. Or go to: https://github.com/settings/tokens")
+                        logger.error("  3. Click on your token")
+                        logger.error("  4. Click 'Configure SSO'")
+                        logger.error("  5. Click 'Authorize' next to chainguard-dev organization")
+                        logger.error("=" * 60)
+                        sys.exit(1)
+                else:
+                    logger.error("=" * 60)
+                    logger.error("GitHub token found, but access to chainguard-images/images-private is forbidden.")
+                    logger.error("")
+                    logger.error("Your GitHub account may not have access to this private repository.")
+                    logger.error("Contact your Chainguard administrator for repository access.")
+                    logger.error("")
+                    logger.error("=" * 60)
+                    sys.exit(1)
+            elif e.response.status_code == 404:
+                logger.warning("Could not verify repository access (404). Proceeding anyway...")
+                logger.info("✓ GitHub authentication configured")
+            else:
+                logger.error(f"GitHub API error: {e}")
+                sys.exit(1)
+        except Exception as e:
+            logger.warning(f"Could not verify repository access: {e}. Proceeding anyway...")
+            logger.info("✓ GitHub authentication configured")
 
     # Initialize scanner
     scanner = VulnerabilityScanner(
@@ -587,33 +879,33 @@ def main():
     # Check if we have any successful results
     successful_count = sum(1 for r in results if r.scan_successful)
     if successful_count == 0:
-        logger.error("=" * 60)
-        logger.error("No successful scan results to generate reports.")
-        logger.error("All image scans failed. Common causes:")
-        logger.error("  - Chainguard images require authentication (run: chainctl auth configure-docker)")
-        logger.error("  - Network connectivity issues")
-        logger.error("  - Invalid image names in CSV")
-        logger.error("Check the error messages above for details.")
-        logger.error("=" * 60)
+        log_error_section(
+            "No successful scan results to generate reports.",
+            [
+                "All image scans failed. Common causes:",
+                "  - Chainguard images require authentication (run: chainctl auth configure-docker)",
+                "  - Network connectivity issues",
+                "  - Invalid image names in CSV",
+                "Check the error messages above for details.",
+            ],
+            logger=logger,
+        )
         sys.exit(1)
 
     # Sanitize customer name for filenames
     safe_customer_name = sanitize_customer_name(args.customer_name)
 
     # Generate reports
-    output_files = generate_reports(args, results, kev_catalog, safe_customer_name)
+    output_files = generate_reports(args, results, kev_catalog, safe_customer_name, output_types)
 
     # Summary
     successful = sum(1 for r in results if r.scan_successful)
     failed = len(results) - successful
 
     logger.info("=" * 60)
-    if output_format == "both":
-        logger.info(f"Reports generated:")
-        for f in output_files:
-            logger.info(f"  - {f}")
-    else:
-        logger.info(f"Report generated: {output_files[0]}")
+    logger.info("Reports generated:")
+    for output_type, file_path in output_files.items():
+        logger.info(f"  - {output_names[output_type]}: {file_path}")
     logger.info(f"Scanned: {successful} successful, {failed} failed")
     logger.info("Done!")
 
