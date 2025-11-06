@@ -162,7 +162,7 @@ class VulnerabilityScanner:
                         kev_cves.append(cve_id)
 
                 if kev_cves:
-                    logger.warning(f"⚠️  {len(kev_cves)} Known Exploited Vulnerabilities found in {image}")
+                    logger.info(f"⚠️  {len(kev_cves)} Known Exploited Vulnerabilities found in {image}")
 
             # Run CHPS scoring if requested
             chps_score = None

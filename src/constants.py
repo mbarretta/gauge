@@ -30,7 +30,7 @@ CHAINGUARD_IMAGE_COST = 29000
 # Concurrency and Performance
 # ============================================================================
 
-DEFAULT_MAX_WORKERS = 4
+DEFAULT_MAX_WORKERS = 8
 """Default number of concurrent workers for parallel scanning."""
 
 # ============================================================================

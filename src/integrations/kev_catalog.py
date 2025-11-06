@@ -118,7 +118,7 @@ class KEVCatalog:
         kevs_found = []
         for cve_id in cve_ids:
             if self.is_kev(cve_id):
-                logger.warning(f"KEV found in {image_name}: {cve_id}")
+                logger.info(f"KEV found in {image_name}: {cve_id}")
                 kevs_found.append(cve_id)
 
         return kevs_found
