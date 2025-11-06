@@ -923,5 +923,143 @@ def main():
     logger.info("Done!")
 
 
+def main_dispatch():
+    """
+    Main entry point with subcommand routing.
+
+    Supports both the main scan command and the match subcommand:
+    - gauge [args] - Run vulnerability scanning (default)
+    - gauge match [args] - Match alternative images to Chainguard equivalents
+    """
+    # Check if first argument is "match" subcommand
+    if len(sys.argv) > 1 and sys.argv[1] == "match":
+        # Remove "match" from argv and dispatch to match command
+        sys.argv.pop(1)
+        main_match()
+    else:
+        # Default: run scan command
+        main()
+
+
+def main_match():
+    """Match command entry point."""
+    parser = argparse.ArgumentParser(
+        prog="gauge match",
+        description="Match alternative container images to Chainguard equivalents",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Match images from text file (one per line)
+  gauge match --input images.txt --output matched.csv
+
+  # Match with interactive prompts for low-confidence matches
+  gauge match --input images.txt --output matched.csv --interactive
+
+  # Use local DFC mappings file (offline mode)
+  gauge match --input images.txt --output matched.csv --dfc-mappings-file local-mappings.yaml
+
+  # Adjust confidence threshold
+  gauge match --input images.txt --output matched.csv --min-confidence 0.8
+""",
+    )
+
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=Path,
+        required=True,
+        help="Input file with alternative images (text file or CSV with first column)",
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=Path("matched.csv"),
+        help="Output CSV file with matched image pairs (default: matched.csv)",
+    )
+
+    parser.add_argument(
+        "--unmatched",
+        type=Path,
+        default=Path("unmatched.txt"),
+        help="Output file for unmatched images (default: unmatched.txt, only created if needed)",
+    )
+
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Enable interactive mode to review low-confidence matches",
+    )
+
+    parser.add_argument(
+        "--min-confidence",
+        type=float,
+        default=0.7,
+        help="Minimum confidence threshold for automatic matching (0.0-1.0, default: 0.7)",
+    )
+
+    parser.add_argument(
+        "--dfc-mappings-file",
+        type=Path,
+        help="Local DFC mappings file (for offline/air-gapped environments)",
+    )
+
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        help="Cache directory for DFC mappings (default: ~/.cache/gauge)",
+    )
+
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose logging",
+    )
+
+    args = parser.parse_args()
+
+    # Setup logging
+    setup_logging(args.verbose)
+
+    # Validate inputs
+    if not args.input.exists():
+        logger.error(f"Input file not found: {args.input}")
+        sys.exit(1)
+
+    if args.min_confidence < 0.0 or args.min_confidence > 1.0:
+        logger.error("Confidence threshold must be between 0.0 and 1.0")
+        sys.exit(1)
+
+    if args.dfc_mappings_file and not args.dfc_mappings_file.exists():
+        logger.error(f"DFC mappings file not found: {args.dfc_mappings_file}")
+        sys.exit(1)
+
+    # Import match command
+    from commands.match import match_images
+
+    # Run matching
+    try:
+        matched_pairs, unmatched_images = match_images(
+            input_file=args.input,
+            output_file=args.output,
+            unmatched_file=args.unmatched,
+            min_confidence=args.min_confidence,
+            interactive=args.interactive,
+            dfc_mappings_file=args.dfc_mappings_file,
+            cache_dir=args.cache_dir,
+        )
+
+        # Only create unmatched file if there are unmatched images
+        if not unmatched_images and args.unmatched.exists():
+            args.unmatched.unlink()
+            logger.info("All images matched successfully - no unmatched.txt file created")
+
+    except Exception as e:
+        logger.error(f"Match command failed: {e}")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
-    main()
+    main_dispatch()
