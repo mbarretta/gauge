@@ -709,7 +709,7 @@ class HTMLGenerator:
                             <th>Vulnerability Name</th>
                             <th>Vendor</th>
                             <th>Product</th>
-                            <th>Date Added to KEV</th>
+                            <th>Date Added</th>
                         </tr>
                     </thead>
                     <tbody>

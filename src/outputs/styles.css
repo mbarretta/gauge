@@ -448,6 +448,17 @@ code {
     border-bottom: 3px solid var(--cg-accent);
 }
 
+/* Set column widths via th elements for table-layout: fixed */
+.image-table-container thead th:nth-child(1),
+.image-table-container thead th:nth-child(3) {
+    width: 30%;
+}
+
+.image-table-container thead th:nth-child(2),
+.image-table-container thead th:nth-child(4) {
+    width: 20%;
+}
+
 .image-table-container tbody tr {
     page-break-inside: avoid;
     break-inside: avoid;
@@ -480,7 +491,7 @@ code {
 }
 
 .image-name-cell {
-    width: 40%;
+    width: 30%;
 }
 
 .vulnerability-count {
@@ -560,6 +571,31 @@ code {
 /* KEV Table Styling */
 .kev-table table {
     font-size: 0.9em;
+}
+
+/* KEV table has 6 columns, so needs different width distribution */
+.kev-table thead th:nth-child(1) {
+    width: 28% !important;  /* Image column - needs space for long names */
+}
+
+.kev-table thead th:nth-child(2) {
+    width: 13% !important;  /* CVE ID */
+}
+
+.kev-table thead th:nth-child(3) {
+    width: 27% !important;  /* Vulnerability Name - needs more space */
+}
+
+.kev-table thead th:nth-child(4) {
+    width: 10% !important;  /* Vendor - can be smaller */
+}
+
+.kev-table thead th:nth-child(5) {
+    width: 10% !important;  /* Product - can be smaller */
+}
+
+.kev-table thead th:nth-child(6) {
+    width: 12% !important;  /* Date */
 }
 
 .kev-table th {
