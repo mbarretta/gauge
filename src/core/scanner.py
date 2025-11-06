@@ -22,6 +22,7 @@ from core.models import (
     SeverityLevel,
     VulnerabilityCount,
 )
+from core.retry_queue import RetryQueue
 from utils.docker_utils import DockerClient
 from utils.chps_utils import CHPSScanner
 
@@ -65,6 +66,7 @@ class VulnerabilityScanner:
         self.check_fresh_images = check_fresh_images
         self.with_chps = with_chps
         self.kev_catalog = kev_catalog
+        self.retry_queue = RetryQueue()
 
         if with_chps:
             logger.info("CHPS scoring enabled, initializing CHPS scanner...")
@@ -95,12 +97,19 @@ class VulnerabilityScanner:
 
         logger.info("Scanner tools verified: syft, grype")
 
-    def scan_image(self, image: str) -> ImageAnalysis:
+    def scan_image(
+        self,
+        image: str,
+        context: Optional[str] = None,
+        pair_index: Optional[int] = None
+    ) -> ImageAnalysis:
         """
         Scan a single image for vulnerabilities.
 
         Args:
             image: Image reference to scan
+            context: Context string for retry tracking (e.g., 'alternative', 'chainguard')
+            pair_index: Index of the image pair being scanned (for retry tracking)
 
         Returns:
             ImageAnalysis with scan results
@@ -120,8 +129,20 @@ class VulnerabilityScanner:
                     f"Using {image} as fallback for {original_image}"
                 )
             if not pull_successful:
+                error_msg = f"Failed to pull image {original_image} and all fallback strategies failed"
                 logger.error(f"Failed to pull image {original_image} - cannot scan")
-                raise RuntimeError(f"Failed to pull image {original_image} and all fallback strategies failed")
+
+                # Add to retry queue for later retry attempt
+                if context:
+                    self.retry_queue.add(
+                        image=original_image,
+                        platform=self.platform,
+                        error_message=error_msg,
+                        context=context,
+                        pair_index=pair_index
+                    )
+
+                raise RuntimeError(error_msg)
 
         # Get image digest for caching
         digest = self.docker.get_image_digest(image)
@@ -322,12 +343,17 @@ class VulnerabilityScanner:
         return vuln_count, cve_ids
 
 
-    def scan_image_pair(self, pair: ImagePair) -> ScanResult:
+    def scan_image_pair(
+        self,
+        pair: ImagePair,
+        pair_index: Optional[int] = None
+    ) -> ScanResult:
         """
         Scan both images in a pair.
 
         Args:
             pair: ImagePair to scan
+            pair_index: Index of this pair in the batch (for retry tracking)
 
         Returns:
             ScanResult with both analyses
@@ -335,8 +361,16 @@ class VulnerabilityScanner:
         logger.info(f"Scanning pair: {pair}")
 
         try:
-            alternative_analysis = self.scan_image(pair.alternative_image)
-            chainguard_analysis = self.scan_image(pair.chainguard_image)
+            alternative_analysis = self.scan_image(
+                pair.alternative_image,
+                context="alternative",
+                pair_index=pair_index
+            )
+            chainguard_analysis = self.scan_image(
+                pair.chainguard_image,
+                context="chainguard",
+                pair_index=pair_index
+            )
 
             return ScanResult(
                 pair=pair,
@@ -372,12 +406,12 @@ class VulnerabilityScanner:
         results = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             future_to_pair = {
-                executor.submit(self.scan_image_pair, pair): pair
-                for pair in pairs
+                executor.submit(self.scan_image_pair, pair, i): (pair, i)
+                for i, pair in enumerate(pairs)
             }
 
             for i, future in enumerate(as_completed(future_to_pair), 1):
-                pair = future_to_pair[future]
+                pair, pair_index = future_to_pair[future]
                 try:
                     result = future.result()
                     results.append(result)
@@ -397,6 +431,102 @@ class VulnerabilityScanner:
         # Log summary
         successful = sum(1 for r in results if r.scan_successful)
         failed = len(results) - successful
-        logger.info(f"Scan complete: {successful} succeeded, {failed} failed")
+        logger.info(f"Initial scan complete: {successful} succeeded, {failed} failed")
+
+        # Process retry queue if there are failed pulls
+        if not self.retry_queue.is_empty():
+            logger.info(f"Processing {self.retry_queue.size()} failed image pulls for retry...")
+            results = self._process_retry_queue(results, pairs)
+
+        return results
+
+    def _process_retry_queue(
+        self,
+        results: list[ScanResult],
+        pairs: list[ImagePair]
+    ) -> list[ScanResult]:
+        """
+        Process retry queue and update results for successful retries.
+
+        Args:
+            results: Original scan results
+            pairs: Original list of image pairs
+
+        Returns:
+            Updated scan results with successful retries incorporated
+        """
+        failed_pulls = self.retry_queue.get_all()
+        retry_successes = []
+        retry_failures = []
+
+        for failed_pull in failed_pulls:
+            logger.info(f"Retrying pull for {failed_pull.image} ({failed_pull.context})...")
+
+            # Attempt to pull the image again
+            image, used_fallback, pull_successful = self.docker.pull_image_with_fallback(
+                failed_pull.image,
+                failed_pull.platform
+            )
+
+            if pull_successful:
+                retry_successes.append(failed_pull)
+                logger.info(f"✓ Retry successful for {failed_pull.image}")
+
+                # If pull succeeded, try to scan the image
+                try:
+                    analysis = self.scan_image(image)
+
+                    # Update the corresponding result
+                    if failed_pull.pair_index is not None:
+                        pair = pairs[failed_pull.pair_index]
+                        result_idx = next(
+                            (i for i, r in enumerate(results) if r.pair == pair),
+                            None
+                        )
+
+                        if result_idx is not None:
+                            result = results[result_idx]
+
+                            # Update the appropriate analysis field
+                            if failed_pull.context == "alternative":
+                                results[result_idx] = replace(
+                                    result,
+                                    alternative_analysis=analysis,
+                                    scan_successful=result.chainguard_analysis is not None,
+                                    error_message=None if result.chainguard_analysis else result.error_message
+                                )
+                            elif failed_pull.context == "chainguard":
+                                results[result_idx] = replace(
+                                    result,
+                                    chainguard_analysis=analysis,
+                                    scan_successful=result.alternative_analysis is not None,
+                                    error_message=None if result.alternative_analysis else result.error_message
+                                )
+
+                            logger.info(f"Updated result for pair {failed_pull.pair_index}")
+
+                except Exception as e:
+                    logger.error(f"Retry scan failed for {failed_pull.image}: {e}")
+                    retry_failures.append(failed_pull)
+            else:
+                retry_failures.append(failed_pull)
+                logger.warning(f"✗ Retry failed for {failed_pull.image}")
+
+        # Log retry summary
+        if retry_successes or retry_failures:
+            logger.info(
+                f"Retry complete: {len(retry_successes)} succeeded, "
+                f"{len(retry_failures)} failed"
+            )
+
+            if retry_successes:
+                logger.info("Successfully retried images:")
+                for fp in retry_successes:
+                    logger.info(f"  - {fp.image} ({fp.context})")
+
+            if retry_failures:
+                logger.warning("Failed retry attempts:")
+                for fp in retry_failures:
+                    logger.warning(f"  - {fp.image} ({fp.context})")
 
         return results

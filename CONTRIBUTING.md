@@ -72,6 +72,7 @@ CSV Input → Scanner → Cache Check → Syft (SBOM) → Grype (CVEs) → CHPS 
 4. **Immutable Data Models**: Frozen dataclasses prevent accidental mutation
 5. **Modular Report Generation**: Separate generators for HTML and XLSX outputs
 6. **Checkpoint/Resume**: Long-running scans can be interrupted and resumed
+7. **Automatic Retry Queue**: Failed image pulls are automatically retried at the end of scans to handle transient network issues, rate limits, and temporary server problems
 
 ## Code Organization
 
@@ -148,6 +149,7 @@ gauge/
 - Manages parallel scanning with thread pool
 - Handles image freshness checking
 - Integrates with caching system
+- Automatic retry queue for failed image pulls
 
 **`cache.py`** - Performance optimization
 - Digest-based cache keys (SHA256)
@@ -172,6 +174,12 @@ gauge/
 - Custom exception hierarchy
 - Semantic error types
 - Consistent error messages
+
+**`retry_queue.py`** - Error recovery
+- Tracks failed image pulls for retry
+- Automatic retry at end of scan run
+- Handles transient network/rate limit errors
+- In-memory queue with context tracking
 
 **`scanner_interface.py`** - Plugin system
 - `VulnerabilityProvider` abstract base
@@ -278,9 +286,10 @@ gauge/
 
 **`docker_utils.py`** - Container operations
 - Docker/Podman abstraction
-- Intelligent fallback (mirror.gcr.io)
-- Image pulling and inspection
+- Intelligent fallback strategies (mirror.gcr.io, :latest tag)
+- Image pulling and inspection with timeout handling
 - Platform handling
+- Recoverable error detection for retry queue
 
 **`chps_utils.py`** - Container hardening
 - Containerized CHPS execution
@@ -336,6 +345,27 @@ class ScanException(GaugeException):
 class CacheException(GaugeException):
     """Cache operation failed."""
 ```
+
+**Retry Queue for Transient Failures:**
+
+Failed image pulls (network issues, rate limits, temporary server problems) are automatically tracked and retried at the end of each scan run:
+
+```python
+# During scan: failed pulls are added to retry queue
+scanner.scan_image("python:3.12", context="alternative", pair_index=0)
+# If pull fails → added to retry queue
+
+# After all scans complete: automatic retry processing
+results = scanner.scan_image_pairs_parallel(pairs)
+# Retry queue is processed automatically
+# Successful retries update the results
+```
+
+Key features:
+- **Single retry**: Each image gets exactly 1 retry (total 2 attempts)
+- **End-of-run timing**: Maximizes time between attempts
+- **Context tracking**: Knows which image pair and role failed
+- **Result updates**: Successful retries update scan results in-place
 
 ### 5. Performance
 
