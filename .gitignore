@@ -75,6 +75,7 @@ chainguard-token
 *.html
 *.xlsx
 *.pdf
+*_quote.txt
 
 # Logs
 *.log
