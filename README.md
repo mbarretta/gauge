@@ -277,7 +277,7 @@ Optional header row is automatically skipped.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `-s, --source` | `images.csv` | Source CSV file with image pairs |
-| `-o, --output` | All three types | Output types to generate (comma-separated): `cost_analysis` (XLSX), `vuln_summary` (HTML), `pricing` (HTML + TXT). Default generates all three. Examples: `--output pricing`, `--output cost_analysis,pricing` |
+| `-o, --output` | `vuln_summary,cost_analysis` | Output types to generate (comma-separated): `cost_analysis` (XLSX), `vuln_summary` (HTML), `pricing` (HTML + TXT). Examples: `--output pricing`, `--output cost_analysis,pricing`, `--output vuln_summary,cost_analysis,pricing` |
 | `--output-dir` | `.` (current directory) | Output directory for generated reports |
 | `--pricing-policy` | `pricing-policy.yaml` | Pricing policy file for quote generation (see [Pricing Configuration](#pricing-configuration)) |
 
@@ -465,8 +465,11 @@ gauge --output pricing,cost_analysis
 # Use custom pricing policy
 gauge --pricing-policy custom-pricing.yaml --output pricing
 
-# Generate all outputs (default)
+# Generate default outputs (vuln_summary + cost_analysis)
 gauge --source images.csv --customer "Acme Corp"
+
+# Generate all three output types
+gauge --source images.csv --customer "Acme Corp" --output vuln_summary,cost_analysis,pricing
 ```
 
 #### Output

@@ -9,10 +9,10 @@ from cli import parse_args, parse_output_types
 class TestOutputTypeParsing:
     """Tests for parse_output_types function."""
 
-    def test_default_none_returns_all_types(self):
-        """Test that None (default) returns all three output types."""
+    def test_default_none_returns_default_types(self):
+        """Test that None (default) returns vuln_summary and cost_analysis."""
         result = parse_output_types(None)
-        assert result == {'cost_analysis', 'vuln_summary', 'pricing'}
+        assert result == {'cost_analysis', 'vuln_summary'}
 
     def test_single_type(self):
         """Test parsing a single output type."""
@@ -108,10 +108,10 @@ class TestCLIIntegration:
     """Integration tests for CLI argument parsing with output type parsing."""
 
     def test_default_workflow(self):
-        """Test default workflow: no --output flag generates all types."""
+        """Test default workflow: no --output flag generates vuln_summary and cost_analysis."""
         args = parse_args(['--source', 'test.csv'])
         output_types = parse_output_types(args.output)
-        assert output_types == {'cost_analysis', 'vuln_summary', 'pricing'}
+        assert output_types == {'cost_analysis', 'vuln_summary'}
 
     def test_single_pricing_workflow(self):
         """Test workflow for generating only pricing quote."""

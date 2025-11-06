@@ -95,9 +95,9 @@ Examples:
   gauge --output vuln_summary --output-dir ./reports \\
         --customer "Acme Corp" --exec-summary summary.md
 
-  # Generate both outputs
-  gauge --output both --output-dir ./reports \\
-        --customer "Acme Corp" --exec-summary summary.md
+  # Generate all three output types
+  gauge --output vuln_summary,cost_analysis,pricing --output-dir ./reports \\
+        --customer "Acme Corp"
 
   # Include FIPS cost analysis (cost_analysis only)
   gauge --output cost_analysis --with-fips
@@ -121,7 +121,7 @@ Examples:
         help=(
             "Output types to generate (comma-separated): 'cost_analysis' (XLSX), "
             "'vuln_summary' (HTML), 'pricing' (price quote). "
-            "Default: all three types. Example: --output cost_analysis,pricing"
+            "Default: vuln_summary and cost_analysis. Example: --output cost_analysis,pricing"
         ),
     )
     io_group.add_argument(
@@ -363,7 +363,7 @@ def parse_output_types(output_arg: Optional[str]) -> set[str]:
     Parse comma-delimited output types argument.
 
     Args:
-        output_arg: Comma-delimited output types or None for all
+        output_arg: Comma-delimited output types or None for default types
 
     Returns:
         Set of output types to generate
@@ -373,9 +373,9 @@ def parse_output_types(output_arg: Optional[str]) -> set[str]:
     """
     valid_types = set(OUTPUT_CONFIGS.keys())
 
-    # Default to all types if not specified
+    # Default to vuln_summary and cost_analysis if not specified
     if output_arg is None:
-        return valid_types.copy()
+        return {'vuln_summary', 'cost_analysis'}
 
     # Parse comma-delimited list
     requested_types = {t.strip() for t in output_arg.split(",")}
