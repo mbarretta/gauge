@@ -229,6 +229,19 @@ This will fetch CISA's KEV catalog and identify which CVEs in your images are ac
 
 **Note:** The KEV catalog is fetched from CISA on each run when `--with-kevs` is enabled. This ensures you always have the most up-to-date list of exploited vulnerabilities.
 
+### Enable All Optional Features
+
+Use `--with-all` as a shortcut to enable CHPS scoring, FIPS detection, and KEV tracking all at once:
+
+```bash
+gauge --output both \
+      --output-dir ./reports \
+      --customer "Acme Corp" \
+      --with-all
+```
+
+This is equivalent to: `--with-chps --with-fips --with-kevs`
+
 ### Custom Platform Specification
 
 Override the default platform for specialized environments:
@@ -336,6 +349,12 @@ See `sample-exec-summary.md` and `sample-appendix.md` for complete examples.
 | Option | Default | Description |
 |--------|---------|-------------|
 | `--with-kevs` | - | Check CVEs against CISA's Known Exploited Vulnerabilities catalog and highlight them in reports |
+
+### Convenience Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--with-all` | - | Enable all optional features (equivalent to `--with-chps --with-fips --with-kevs`) |
 
 ### Pricing Configuration
 

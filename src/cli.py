@@ -247,6 +247,13 @@ Examples:
         help="Include CISA Known Exploited Vulnerabilities (KEV) data in reports",
     )
 
+    # Convenience flag to enable all features
+    parser.add_argument(
+        "--with-all",
+        action="store_true",
+        help="Enable all optional features (equivalent to --with-chps --with-fips --with-kevs)",
+    )
+
     # Other options
     parser.add_argument(
         "-v",
@@ -671,6 +678,12 @@ def main():
     """Main entry point."""
     args = parse_args()
     setup_logging(args.verbose)
+
+    # Handle --with-all convenience flag
+    if args.with_all:
+        args.with_chps = True
+        args.with_fips = True
+        args.with_kevs = True
 
     logger.info("Gauge - Container Vulnerability Assessment v2.0")
     logger.info("=" * 60)

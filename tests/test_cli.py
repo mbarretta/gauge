@@ -86,6 +86,23 @@ class TestCLIArguments:
         args = parse_args(['--source', 'test.csv', '-o', 'pricing'])
         assert args.output == 'pricing'
 
+    def test_with_all_flag_sets_individual_flags(self):
+        """Test that --with-all flag is parsed correctly."""
+        args = parse_args(['--source', 'test.csv', '--with-all'])
+        assert args.with_all is True
+
+    def test_without_with_all_flag_defaults_false(self):
+        """Test that --with-all defaults to False."""
+        args = parse_args(['--source', 'test.csv'])
+        assert args.with_all is False
+
+    def test_individual_with_flags_default_false(self):
+        """Test that individual --with-* flags default to False."""
+        args = parse_args(['--source', 'test.csv'])
+        assert args.with_chps is False
+        assert args.with_fips is False
+        assert args.with_kevs is False
+
 
 class TestCLIIntegration:
     """Integration tests for CLI argument parsing with output type parsing."""
