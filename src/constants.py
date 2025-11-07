@@ -30,8 +30,61 @@ CHAINGUARD_IMAGE_COST = 29000
 # Concurrency and Performance
 # ============================================================================
 
-DEFAULT_MAX_WORKERS = 8
+DEFAULT_MAX_WORKERS = 4
 """Default number of concurrent workers for parallel scanning."""
+
+# ============================================================================
+# Image Matching Configuration
+# ============================================================================
+
+DEFAULT_MATCH_CONFIDENCE = 0.7
+"""Default minimum confidence for automatic matching (0.0-1.0)."""
+
+DEFAULT_UPSTREAM_CONFIDENCE = 0.7
+"""Default minimum confidence for upstream discovery (0.0-1.0)."""
+
+DEFAULT_LLM_CONFIDENCE = 0.7
+"""Default minimum confidence for LLM fuzzy matching (0.0-1.0)."""
+
+DFC_CONTRIBUTION_THRESHOLD = 0.85
+"""Minimum confidence for DFC contribution eligibility (0.0-1.0)."""
+
+MANUAL_MAPPING_THRESHOLD = 0.85
+"""Minimum confidence for auto-populating manual mappings (0.0-1.0)."""
+
+# Matching tier confidences
+MATCH_CONFIDENCE_DFC = 0.95
+"""Confidence for DFC tier 1 matches."""
+
+MATCH_CONFIDENCE_MANUAL = 1.0
+"""Confidence for manual tier 2 matches."""
+
+MATCH_CONFIDENCE_HEURISTIC = 0.85
+"""Confidence for heuristic tier 3 matches."""
+
+# ============================================================================
+# LLM Configuration
+# ============================================================================
+
+DEFAULT_LLM_MODEL = "claude-sonnet-4-5"
+"""Default Claude model for LLM matching."""
+
+LLM_MODEL_OPTIONS = {
+    "claude-sonnet-4-5": "Balanced performance and accuracy",
+    "claude-opus-4-1": "Highest accuracy, slower",
+    "claude-haiku-4-5": "Fastest, cheapest",
+}
+"""Available Claude models for LLM matching."""
+
+# ============================================================================
+# Registry Configuration
+# ============================================================================
+
+CHAINGUARD_PRIVATE_REGISTRY = "cgr.dev/chainguard-private"
+"""Chainguard private registry prefix."""
+
+CHAINGUARD_PUBLIC_REGISTRY = "cgr.dev/chainguard"
+"""Chainguard public registry prefix."""
 
 # ============================================================================
 # Timeouts (in seconds)
@@ -113,12 +166,12 @@ CHAINGUARD_LOGO_PATH = "resources/linky-white.png"
 # ============================================================================
 
 GRADE_TO_CSS_CLASS = {
-    'A+': 'vuln-negligible',
-    'A': 'vuln-negligible',
-    'B': 'vuln-low',
-    'C': 'vuln-medium',
-    'D': 'vuln-high',
-    'E': 'vuln-critical',
-    'F': 'vuln-critical',
+    "A+": "vuln-negligible",
+    "A": "vuln-negligible",
+    "B": "vuln-low",
+    "C": "vuln-medium",
+    "D": "vuln-high",
+    "E": "vuln-critical",
+    "F": "vuln-critical",
 }
 """Mapping of CHPS letter grades to CSS color classes (without vuln-badge)."""

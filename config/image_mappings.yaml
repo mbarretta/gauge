@@ -1,0 +1,73 @@
+# Manual Image Mappings
+# Last updated: 2025-11-07T11:07:11.546820
+# Total mappings: 62
+#
+# Format: "source:tag": "cgr.dev/chainguard[-private]/image:tag"
+#
+# Auto-populated from successful matches:
+#   containers.istio.tetratelabs.com/install-cni:1.20.3-tetrate4 → cgr.dev/chainguard-private/istio-install-cni:latest (llm, 85%)
+#   containers.istio.tetratelabs.com/proxyv2:1.20.3-tetrate4 → cgr.dev/chainguard-private/istio-proxy:latest (llm, 85%)
+#
+
+602401143452.dkr.ecr.us-west-2.amazonaws.com/eks/coredns:v1.8.7-eksbuild.1: cgr.dev/chainguard-private/coredns:latest
+amazon/aws-cli:2.13.26: cgr.dev/chainguard-private/aws-cli:latest
+amazon/aws-efs-csi-driver:v2.0.0: cgr.dev/chainguard-private/aws-efs-csi-driver:latest
+atmoz/sftp:latest: cgr.dev/chainguard-private/atmoz-sftp:latest
+bitnami/kubectl:1.26.4: cgr.dev/chainguard-private/kubectl-iamguarded:latest
+busybox: cgr.dev/chainguard-private/busybox:latest
+containers.istio.tetratelabs.com/install-cni:1.20.3-tetrate4: cgr.dev/chainguard-private/istio-install-cni:latest
+containers.istio.tetratelabs.com/proxyv2:1.20.3-tetrate4: cgr.dev/chainguard-private/istio-proxy:latest
+cr.fluentbit.io/fluent/fluent-bit:2.0.9: cgr.dev/chainguard-private/fluent-bit:latest
+curlimages/curl:7.76.1: cgr.dev/chainguard-private/curl:latest
+docker.artifactory.mars.pcf-maximus.com/bitnami/mongodb:7.0.2-debian-11-r7: cgr.dev/chainguard-private/mongodb-iamguarded:latest
+docker.artifactory.mars.pcf-maximus.com/bitnami/postgresql:15.1.0-debian-11-r19: cgr.dev/chainguard-private/postgres:latest
+docker.artifactory.mars.pcf-maximus.com/generic/memcached: cgr.dev/chainguard-private/memcached:latest
+docker.artifactory.mars.pcf-maximus.com/grafana/grafana:10.0.3: cgr.dev/chainguard-private/grafana:latest
+docker.artifactory.mars.pcf-maximus.com/jenkins/jenkins:2.426.1-jdk11: cgr.dev/chainguard-private/jenkins:latest
+docker.artifactory.mars.pcf-maximus.com/maven:latest: cgr.dev/chainguard-private/maven:latest
+docker.artifactory.mars.pcf-maximus.com/sonarqube:9.9.0-community: cgr.dev/chainguard-private/sonarqube:latest
+docker.artifactory.mars.pcf-maximus.com/velero/velero-plugin-for-aws:v1.7.0: cgr.dev/chainguard-private/velero-plugin-for-aws:latest
+docker.artifactory.mars.pcf-maximus.com/velero/velero:v1.12.3: cgr.dev/chainguard-private/velero:latest
+docker.io/bitnami/influxdb:2.7.6-debian-12-r8: cgr.dev/chainguard-private/influxdb-iamguarded:latest
+docker.io/bitnami/mariadb:10.11.4-debian-11-r0: cgr.dev/chainguard-private/mariadb:latest
+docker.io/bitnami/mysql:8.0.33-debian-11-r17: cgr.dev/chainguard-private/mysql-iamguarded:latest
+docker.io/bitnami/rabbitmq:3.12.0-debian-11-r0: cgr.dev/chainguard-private/rabbitmq-iamguarded:latest
+docker.io/bitnami/sealed-secrets-controller:v0.18.1: cgr.dev/chainguard-private/sealed-secrets-controller:latest
+gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0: cgr.dev/chainguard-private/kube-rbac-proxy:latest
+ghcr.io/dexidp/dex:v2.37.0: cgr.dev/chainguard-private/dex:latest
+ghcr.io/kyverno/background-controller:v1.10.3: cgr.dev/chainguard-private/kyverno-background-controller:latest
+ghcr.io/kyverno/cleanup-controller:v1.10.3: cgr.dev/chainguard-private/kyverno-cleanup-controller:latest
+ghcr.io/kyverno/kyverno:v1.10.3: cgr.dev/chainguard-private/kyverno:latest
+ghcr.io/kyverno/kyvernopre:v1.10.3: cgr.dev/chainguard-private/kyvernopre:latest
+ghcr.io/kyverno/reports-controller:v1.10.3: cgr.dev/chainguard-private/kyverno-reports-controller:latest
+jenkins/inbound-agent:latest: cgr.dev/chainguard-private/jenkins-inbound-agent:latest
+jimmidyson/configmap-reload:v0.8.0: cgr.dev/chainguard-private/configmap-reload:latest
+k8s.gcr.io/ingress-nginx/controller:v1.3.0: cgr.dev/chainguard-private/ingress-nginx-controller:latest
+nginx: cgr.dev/chainguard-private/nginx:latest
+openzipkin/zipkin-slim:2.23.14: cgr.dev/chainguard-private/zipkin-slim:latest
+public.ecr.aws/ebs-csi-driver/aws-ebs-csi-driver:v1.23.0: cgr.dev/chainguard-private/aws-ebs-csi-driver:latest
+public.ecr.aws/eks-distro/kubernetes-csi/external-attacher:v4.3.0-eks-1-27-9: cgr.dev/chainguard-private/kubernetes-csi-external-attacher:latest
+public.ecr.aws/eks-distro/kubernetes-csi/external-provisioner:v4.0.0-eks-1-29-7: cgr.dev/chainguard-private/kubernetes-csi-external-provisioner:latest
+public.ecr.aws/eks-distro/kubernetes-csi/external-resizer:v1.8.0-eks-1-28-4: cgr.dev/chainguard-private/kubernetes-csi-external-resizer:latest
+public.ecr.aws/eks-distro/kubernetes-csi/livenessprobe:v2.12.0-eks-1-29-7: cgr.dev/chainguard-private/kubernetes-csi-livenessprobe:latest
+public.ecr.aws/eks-distro/kubernetes-csi/node-driver-registrar:v2.10.0-eks-1-29-7: cgr.dev/chainguard-private/node:latest
+public.ecr.aws/eks/aws-load-balancer-controller:v2.7.1: cgr.dev/chainguard-private/aws-load-balancer-controller:latest
+quay.io/jetstack/cert-manager-controller:v1.14.4: cgr.dev/chainguard-private/cert-manager-controller:latest
+quay.io/kiali/kiali:v1.76: cgr.dev/chainguard-private/kiali:latest
+quay.io/kubecost1/opencost-ui:prod-1.103.3: cgr.dev/chainguard-private/opencost-ui:latest
+quay.io/prometheus-operator/prometheus-config-reloader:v0.66.0: cgr.dev/chainguard-private/prometheus-config-reloader:latest
+quay.io/prometheus/node-exporter:v1.6.0: cgr.dev/chainguard-private/prometheus-node-exporter:latest
+quay.io/prometheus/prometheus:v2.45.0: cgr.dev/chainguard-private/prometheus:latest
+rancher/fleet-agent:v0.9.4: cgr.dev/chainguard-private/rancher-fleet-agent:latest
+rancher/fleet:v0.9.4: cgr.dev/chainguard-private/rancher-fleet:latest
+rancher/kubectl:v1.22.6: cgr.dev/chainguard-private/kubectl:latest
+rancher/rancher: cgr.dev/chainguard-private/rancher:latest
+rancher/rancher-webhook:v0.4.5: cgr.dev/chainguard-private/rancher-webhook:latest
+registry.k8s.io/autoscaling/cluster-autoscaler:v1.26.2: cgr.dev/chainguard-private/cluster-autoscaler:latest
+registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.9.2: cgr.dev/chainguard-private/kube-state-metrics:latest
+selenium/distributor:4: cgr.dev/chainguard-private/selenium-distributor:latest
+selenium/event-bus:4: cgr.dev/chainguard-private/selenium-event-bus:latest
+selenium/node-chrome:latest: cgr.dev/chainguard-private/node:latest
+selenium/router:4: cgr.dev/chainguard-private/selenium-router:latest
+selenium/session-queue:4: cgr.dev/chainguard-private/selenium-session-queue:latest
+selenium/sessions:4: cgr.dev/chainguard-private/selenium-sessions:latest

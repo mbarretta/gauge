@@ -211,6 +211,7 @@ class ScanResultPersistence:
         pair = ImagePair(
             chainguard_image=data["pair"]["chainguard_image"],
             alternative_image=data["pair"]["alternative_image"],
+            upstream_image=data["pair"].get("upstream_image"),
         )
 
         return ScanResult(

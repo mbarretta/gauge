@@ -122,13 +122,14 @@ class DockerClient:
             logger.debug(f"Failed to get remote digest for {image}: {e}")
             return None
 
-    def ensure_fresh_image(self, image: str, platform: Optional[str] = None) -> tuple[str, bool, bool]:
+    def ensure_fresh_image(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool]:
         """
         Ensure local image is up-to-date with remote, with intelligent fallback strategies.
 
         Args:
             image: Image reference to check/pull
             platform: Platform specification (default: "linux/amd64")
+            upstream_image: Optional upstream image to try as fallback (e.g., docker.io equivalent)
 
         Returns:
             Tuple of (image_used, used_fallback, pull_successful) where:
@@ -144,13 +145,13 @@ class DockerClient:
             if not remote_digest:
                 logger.debug(f"Could not get remote digest for {image}, attempting pull with fallback")
                 # Image might not exist, try pulling with fallback
-                return self.pull_image_with_fallback(image, platform)
+                return self.pull_image_with_fallback(image, platform, upstream_image=upstream_image)
 
             local_digest = self.get_image_digest(image)
 
             if not local_digest or local_digest != remote_digest:
                 logger.info(f"Pulling fresh copy of {image} ({platform})")
-                return self.pull_image_with_fallback(image, platform)
+                return self.pull_image_with_fallback(image, platform, upstream_image=upstream_image)
 
             logger.debug(f"Image {image} is up-to-date")
             return image, False, True
@@ -333,7 +334,7 @@ class DockerClient:
                 [self.runtime, "pull", "--platform", platform, image],
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=60
             )
             return result.returncode == 0, result.stderr
         except subprocess.TimeoutExpired:
@@ -345,8 +346,9 @@ class DockerClient:
 
         not_found_errors = ["not found", "manifest unknown", "does not exist", "no such image", "404"]
         rate_limit_errors = ["toomanyrequests", "rate limit", "too many requests"]
+        connection_errors = ["no such host", "connection refused", "dial tcp", "no basic auth credentials", "unauthorized"]
 
-        return any(msg in stderr_lower for msg in not_found_errors + rate_limit_errors)
+        return any(msg in stderr_lower for msg in not_found_errors + rate_limit_errors + connection_errors)
 
     def _get_latest_fallback_image(self, image: str) -> str | None:
         """
@@ -361,18 +363,20 @@ class DockerClient:
         base_image = image.rsplit(":", 1)[0]
         return f"{base_image}:latest"
 
-    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None) -> tuple[str, bool, bool]:
+    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool]:
         """
         Pull an image from registry with intelligent fallback strategies.
 
         Strategy order:
         1. Try exact image as specified
-        2. If Docker Hub image and failed, try mirror.gcr.io fallback
-        3. If that fails, try with :latest tag as last resort
+        2. If upstream image provided (e.g., from --find-upstream), try that
+        3. If Docker Hub image and failed, try mirror.gcr.io fallback
+        4. If that fails, try with :latest tag as last resort
 
         Args:
             image: Image reference to pull
             platform: Platform specification (default: "linux/amd64")
+            upstream_image: Optional upstream image to try as fallback (e.g., docker.io equivalent)
 
         Returns:
             Tuple of (image_used, used_fallback, pull_successful)
@@ -395,7 +399,18 @@ class DockerClient:
 
         logger.warning(f"Image {image} not found or rate limited, trying fallback strategies")
 
-        # Strategy 2: Try mirror.gcr.io fallback for Docker Hub images
+        # Strategy 2: Try upstream image if provided (e.g., docker.io equivalent for private registry)
+        if upstream_image:
+            logger.warning(f"Trying upstream fallback: {upstream_image}")
+            success, stderr = self._attempt_pull(upstream_image, platform)
+
+            if success:
+                logger.info(f"✓ Upstream fallback successful: {original_image} → {upstream_image}")
+                return upstream_image, True, True
+
+            logger.debug(f"Upstream fallback failed: {stderr}")
+
+        # Strategy 3: Try mirror.gcr.io fallback for Docker Hub images
         mirror_image = self._try_mirror_gcr_fallback(original_image)
         if mirror_image:
             logger.warning(f"Trying mirror.gcr.io fallback: {mirror_image}")
@@ -407,7 +422,7 @@ class DockerClient:
 
             logger.debug(f"Mirror.gcr.io fallback failed: {stderr}")
 
-        # Strategy 3: Try :latest fallback as last resort
+        # Strategy 4: Try :latest fallback as last resort
         latest_image = self._get_latest_fallback_image(image)
         if latest_image:
             logger.warning(f"Trying :latest fallback: {latest_image}")
@@ -480,3 +495,25 @@ class DockerClient:
             logger.debug(f"Error checking Chainguard authentication: {e}")
             # On error, assume container mode and let Docker handle auth
             return True
+
+
+# Module-level helper functions for convenience
+_client = None
+
+
+def image_exists_in_registry(image: str) -> bool:
+    """
+    Check if an image exists in the registry.
+
+    Module-level convenience function that creates a shared DockerClient instance.
+
+    Args:
+        image: Image reference to check
+
+    Returns:
+        True if image exists in registry, False otherwise
+    """
+    global _client
+    if _client is None:
+        _client = DockerClient()
+    return _client.image_exists_in_registry(image)

@@ -58,47 +58,47 @@ class TestCLIArguments:
 
     def test_output_default_is_none(self):
         """Test that --output defaults to None (all types)."""
-        args = parse_args(['--source', 'test.csv'])
+        args = parse_args(['-i', 'test.csv'])
         assert args.output is None
 
     def test_output_single_type(self):
         """Test --output with single type."""
-        args = parse_args(['--source', 'test.csv', '--output', 'pricing'])
+        args = parse_args(['-i', 'test.csv', '--output', 'pricing'])
         assert args.output == 'pricing'
 
     def test_output_comma_delimited(self):
         """Test --output with comma-delimited types."""
-        args = parse_args(['--source', 'test.csv', '--output', 'cost_analysis,pricing'])
+        args = parse_args(['-i', 'test.csv', '--output', 'cost_analysis,pricing'])
         assert args.output == 'cost_analysis,pricing'
 
     def test_pricing_policy_default(self):
         """Test that --pricing-policy has correct default."""
-        args = parse_args(['--source', 'test.csv'])
+        args = parse_args(['-i', 'test.csv'])
         assert args.pricing_policy == Path('pricing-policy.yaml')
 
     def test_pricing_policy_custom(self):
         """Test --pricing-policy with custom path."""
-        args = parse_args(['--source', 'test.csv', '--pricing-policy', 'custom-policy.yaml'])
+        args = parse_args(['-i', 'test.csv', '--pricing-policy', 'custom-policy.yaml'])
         assert args.pricing_policy == Path('custom-policy.yaml')
 
     def test_short_option_o_works(self):
         """Test that -o short option works for --output."""
-        args = parse_args(['--source', 'test.csv', '-o', 'pricing'])
+        args = parse_args(['-i', 'test.csv', '-o', 'pricing'])
         assert args.output == 'pricing'
 
     def test_with_all_flag_sets_individual_flags(self):
         """Test that --with-all flag is parsed correctly."""
-        args = parse_args(['--source', 'test.csv', '--with-all'])
+        args = parse_args(['-i', 'test.csv', '--with-all'])
         assert args.with_all is True
 
     def test_without_with_all_flag_defaults_false(self):
         """Test that --with-all defaults to False."""
-        args = parse_args(['--source', 'test.csv'])
+        args = parse_args(['-i', 'test.csv'])
         assert args.with_all is False
 
     def test_individual_with_flags_default_false(self):
         """Test that individual --with-* flags default to False."""
-        args = parse_args(['--source', 'test.csv'])
+        args = parse_args(['-i', 'test.csv'])
         assert args.with_chps is False
         assert args.with_fips is False
         assert args.with_kevs is False
@@ -109,25 +109,25 @@ class TestCLIIntegration:
 
     def test_default_workflow(self):
         """Test default workflow: no --output flag generates vuln_summary and cost_analysis."""
-        args = parse_args(['--source', 'test.csv'])
+        args = parse_args(['-i', 'test.csv'])
         output_types = parse_output_types(args.output)
         assert output_types == {'cost_analysis', 'vuln_summary'}
 
     def test_single_pricing_workflow(self):
         """Test workflow for generating only pricing quote."""
-        args = parse_args(['--source', 'test.csv', '--output', 'pricing'])
+        args = parse_args(['-i', 'test.csv', '--output', 'pricing'])
         output_types = parse_output_types(args.output)
         assert output_types == {'pricing'}
 
     def test_dual_output_workflow(self):
         """Test workflow for generating two output types."""
-        args = parse_args(['--source', 'test.csv', '--output', 'cost_analysis,pricing'])
+        args = parse_args(['-i', 'test.csv', '--output', 'cost_analysis,pricing'])
         output_types = parse_output_types(args.output)
         assert output_types == {'cost_analysis', 'pricing'}
 
     def test_invalid_output_raises_on_parsing(self):
         """Test that invalid output type is caught during parsing phase."""
-        args = parse_args(['--source', 'test.csv', '--output', 'invalid'])
+        args = parse_args(['-i', 'test.csv', '--output', 'invalid'])
         with pytest.raises(ValueError) as exc_info:
             parse_output_types(args.output)
         assert 'Invalid output type(s): invalid' in str(exc_info.value)

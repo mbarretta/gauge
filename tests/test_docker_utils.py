@@ -151,6 +151,69 @@ class TestDockerClientFallback:
         mirror = docker_client._try_mirror_gcr_fallback("python@sha256:abc123")
         assert mirror is None
 
+    def test_pull_image_with_fallback_dns_error_with_upstream(self, docker_client):
+        """Test upstream fallback when private registry has DNS lookup failure."""
+        with patch('subprocess.run') as mock_run:
+            # First call (private registry) fails with DNS error
+            # Second call (upstream) succeeds
+            mock_run.side_effect = [
+                Mock(returncode=1, stderr="dial tcp: lookup docker.artifactory.mars.pcf-maximus.com on 192.168.5.3:53: no such host", stdout=""),
+                Mock(returncode=0, stderr="", stdout=""),  # upstream success
+            ]
+
+            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+                "docker.artifactory.mars.pcf-maximus.com/bitnami/mongodb:7.0.2-debian-11-r7",
+                "linux/amd64",
+                upstream_image="bitnami/mongodb:7.0.2-debian-11-r7"
+            )
+
+            assert image == "bitnami/mongodb:7.0.2-debian-11-r7"
+            assert used_fallback is True
+            assert pull_successful is True
+            assert mock_run.call_count == 2
+
+    def test_pull_image_with_fallback_connection_refused_with_upstream(self, docker_client):
+        """Test upstream fallback when private registry connection is refused."""
+        with patch('subprocess.run') as mock_run:
+            # First call (private registry) fails with connection refused
+            # Second call (upstream) succeeds
+            mock_run.side_effect = [
+                Mock(returncode=1, stderr="Error: connection refused to private.registry.com", stdout=""),
+                Mock(returncode=0, stderr="", stdout=""),  # upstream success
+            ]
+
+            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+                "private.registry.com/nginx:latest",
+                "linux/amd64",
+                upstream_image="nginx:latest"
+            )
+
+            assert image == "nginx:latest"
+            assert used_fallback is True
+            assert pull_successful is True
+            assert mock_run.call_count == 2
+
+    def test_pull_image_with_fallback_no_auth_with_upstream(self, docker_client):
+        """Test upstream fallback when private registry requires authentication."""
+        with patch('subprocess.run') as mock_run:
+            # First call (private ECR) fails with no auth
+            # Second call (upstream) succeeds
+            mock_run.side_effect = [
+                Mock(returncode=1, stderr="Error: no basic auth credentials", stdout=""),
+                Mock(returncode=0, stderr="", stdout=""),  # upstream success
+            ]
+
+            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+                "602401143452.dkr.ecr.us-west-2.amazonaws.com/eks/coredns:v1.8.7-eksbuild.1",
+                "linux/amd64",
+                upstream_image="eks/coredns:v1.8.7-eksbuild.1"
+            )
+
+            assert image == "eks/coredns:v1.8.7-eksbuild.1"
+            assert used_fallback is True
+            assert pull_successful is True
+            assert mock_run.call_count == 2
+
 
 class TestEnsureFreshImage:
     """Test ensure_fresh_image with fallback integration."""

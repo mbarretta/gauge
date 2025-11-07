@@ -157,10 +157,12 @@ class ImagePair:
     Attributes:
         chainguard_image: Chainguard image reference
         alternative_image: Alternative/upstream image reference
+        upstream_image: Optional upstream image (e.g., docker.io equivalent for private registry images)
     """
 
     chainguard_image: str
     alternative_image: str
+    upstream_image: Optional[str] = None
 
     def __str__(self) -> str:
         return f"{self.chainguard_image} vs {self.alternative_image}"

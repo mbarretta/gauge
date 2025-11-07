@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from utils.image_matcher import ImageMatcher, MatchResult
+from utils.upstream_finder import UpstreamImageFinder
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,14 @@ def match_images(
     interactive: bool = False,
     dfc_mappings_file: Optional[Path] = None,
     cache_dir: Optional[Path] = None,
+    find_upstream: bool = False,
+    upstream_confidence: float = 0.7,
+    upstream_mappings_file: Optional[Path] = None,
+    enable_llm_matching: bool = True,
+    llm_model: str = "claude-sonnet-4-5",
+    llm_confidence_threshold: float = 0.7,
+    anthropic_api_key: Optional[str] = None,
+    generate_dfc_pr: bool = False,
 ) -> tuple[list[tuple[str, str]], list[str]]:
     """
     Match alternative images to Chainguard equivalents.
@@ -36,24 +45,70 @@ def match_images(
         interactive: Enable interactive mode for low-confidence matches
         dfc_mappings_file: Optional local DFC mappings file
         cache_dir: Cache directory for DFC mappings
+        find_upstream: Enable upstream image discovery
+        upstream_confidence: Minimum confidence for upstream matches (0.0 - 1.0)
+        upstream_mappings_file: Optional manual upstream mappings file
+        enable_llm_matching: Enable LLM-powered fuzzy matching (Tier 4)
+        llm_model: Claude model to use for LLM matching
+        llm_confidence_threshold: Minimum confidence for LLM matches (0.0 - 1.0)
+        anthropic_api_key: Anthropic API key for LLM matching
+        generate_dfc_pr: Generate DFC contribution files for high-confidence LLM matches
 
     Returns:
-        Tuple of (matched_pairs, unmatched_images)
+        Tuple of (matched_pairs with MatchResult, unmatched_images)
     """
     # Read input images
     logger.info(f"Reading images from {input_file}")
     alternative_images = read_input_file(input_file)
     logger.info(f"Found {len(alternative_images)} images to match")
 
+    # Ensure output directory exists
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    if unmatched_file.parent != Path("."):
+        unmatched_file.parent.mkdir(parents=True, exist_ok=True)
+
+    # Initialize upstream finder if enabled
+    upstream_finder = None
+    if find_upstream:
+        logger.info("Upstream discovery enabled")
+        upstream_finder = UpstreamImageFinder(
+            manual_mappings_file=upstream_mappings_file,
+            min_confidence=upstream_confidence,
+        )
+
+    # Initialize LLM matcher if enabled
+    llm_matcher = None
+    if enable_llm_matching:
+        from utils.llm_matcher import LLMMatcher
+        logger.info(f"LLM matching enabled (model: {llm_model}, threshold: {llm_confidence_threshold:.0%})")
+        llm_matcher = LLMMatcher(
+            api_key=anthropic_api_key,
+            model=llm_model,
+            cache_dir=cache_dir,
+            confidence_threshold=llm_confidence_threshold,
+        )
+    else:
+        logger.info("LLM matching disabled")
+
     # Initialize matcher
     logger.info("Initializing image matcher...")
     matcher = ImageMatcher(
         cache_dir=cache_dir,
         dfc_mappings_file=dfc_mappings_file,
+        upstream_finder=upstream_finder,
+        llm_matcher=llm_matcher,
     )
 
+    # Initialize DFC contributor if requested
+    dfc_contributor = None
+    if generate_dfc_pr:
+        from utils.dfc_contributor import DFCContributor
+        # Put DFC contributions in the same directory as matched-log.csv
+        dfc_contributor = DFCContributor(output_dir=output_file.parent)
+        logger.info("DFC contribution generation enabled")
+
     # Match images
-    matched_pairs: list[tuple[str, str]] = []
+    matched_pairs: list[tuple[str, MatchResult]] = []
     unmatched_images: list[str] = []
     low_confidence_matches: list[tuple[str, MatchResult]] = []
 
@@ -65,11 +120,27 @@ def match_images(
             logger.warning(f"[{i}/{len(alternative_images)}] No match: {alt_image}")
             unmatched_images.append(alt_image)
         elif result.confidence >= min_confidence:
+            # Show upstream info if available
+            upstream_info = ""
+            if result.upstream_image:
+                upstream_info = f" (via upstream: {result.upstream_image}, {result.upstream_confidence:.0%})"
+
+            # Show LLM reasoning if this was an LLM match
+            llm_info = ""
+            if result.method == "llm" and result.reasoning:
+                llm_info = f"\n    LLM reasoning: {result.reasoning}"
+
             logger.info(
                 f"[{i}/{len(alternative_images)}] ✓ Matched: {alt_image} → {result.chainguard_image} "
-                f"(confidence: {result.confidence:.0%}, method: {result.method})"
+                f"(confidence: {result.confidence:.0%}, method: {result.method}){upstream_info}{llm_info}"
             )
-            matched_pairs.append((alt_image, result.chainguard_image))
+            matched_pairs.append((alt_image, result))
+
+            # Add to DFC contributor if heuristic or LLM match with high confidence
+            # Skip DFC and manual matches as they're already in mappings
+            if dfc_contributor and result.method in ["heuristic", "llm"]:
+                dfc_contributor.add_match(alt_image, result)
+
         else:
             logger.warning(
                 f"[{i}/{len(alternative_images)}] Low confidence: {alt_image} → {result.chainguard_image} "
@@ -86,17 +157,60 @@ def match_images(
         for alt_image, result in low_confidence_matches:
             matched = handle_interactive_match(alt_image, result)
             if matched:
-                matched_pairs.append(matched)
+                # Convert tuple to MatchResult for consistency
+                # Interactive mode returns (alt_image, chainguard_image) tuple
+                # Wrap in a MatchResult with unknown confidence
+                interactive_result = MatchResult(
+                    chainguard_image=matched[1],
+                    confidence=1.0,  # User accepted, so 100% confidence
+                    method="interactive",
+                    upstream_image=result.upstream_image,
+                    upstream_confidence=result.upstream_confidence,
+                    upstream_method=result.upstream_method,
+                )
+                matched_pairs.append((alt_image, interactive_result))
             else:
                 unmatched_images.append(alt_image)
 
     # Write outputs
-    logger.info(f"\nWriting matched pairs to {output_file}")
+    logger.info(f"\nWriting detailed match log to {output_file}")
     write_matched_csv(output_file, matched_pairs)
+
+    # Write intake file for gauge scan
+    intake_file = output_file.parent / "matched-intake.csv"
+    logger.info(f"Writing intake file for gauge scan to {intake_file}")
+    write_matched_intake(intake_file, matched_pairs)
 
     if unmatched_images:
         logger.warning(f"Writing {len(unmatched_images)} unmatched images to {unmatched_file}")
         write_unmatched_file(unmatched_file, unmatched_images)
+
+    # Generate DFC contribution files if requested
+    if dfc_contributor and dfc_contributor.suggestions:
+        logger.info(f"\nGenerating DFC contribution files...")
+        dfc_files = dfc_contributor.generate_all()
+        if dfc_files:
+            logger.info("DFC contribution files generated:")
+            for file_type, file_path in dfc_files.items():
+                logger.info(f"  - {file_type}: {file_path}")
+
+            # Count by method
+            method_counts = {}
+            for _, _, result in dfc_contributor.suggestions:
+                method_counts[result.method] = method_counts.get(result.method, 0) + 1
+
+            logger.info(f"\nIncluded {len(dfc_contributor.suggestions)} high-confidence matches:")
+            for method, count in sorted(method_counts.items()):
+                logger.info(f"  - {method}: {count}")
+
+            logger.info("\nTo contribute these mappings to DFC:")
+            logger.info("  1. Review the suggested mappings in dfc-suggestions.yaml")
+            logger.info("  2. Fork the DFC repository: https://github.com/chainguard-dev/dfc")
+            if 'patch' in dfc_files:
+                logger.info(f"  3. Apply the patch: patch -p0 < {dfc_files['patch'].name}")
+            logger.info("  4. Create a pull request with your changes")
+    elif dfc_contributor:
+        logger.info("\nNo high-confidence matches to contribute to DFC (need confidence >= 0.85)")
 
     # Summary
     logger.info("\n" + "=" * 60)
@@ -104,6 +218,17 @@ def match_images(
     logger.info(f"  Matched: {len(matched_pairs)}")
     logger.info(f"  Unmatched: {len(unmatched_images)}")
     logger.info(f"  Match rate: {len(matched_pairs) / len(alternative_images) * 100:.1f}%")
+
+    # Show method breakdown
+    method_counts = {}
+    for _, result in matched_pairs:
+        method_counts[result.method] = method_counts.get(result.method, 0) + 1
+
+    if method_counts:
+        logger.info(f"\nMatch method breakdown:")
+        for method, count in sorted(method_counts.items()):
+            logger.info(f"  {method}: {count} ({count / len(matched_pairs) * 100:.1f}%)")
+
     logger.info("=" * 60)
 
     return matched_pairs, unmatched_images
@@ -148,9 +273,16 @@ def read_input_file(file_path: Path) -> list[str]:
                     if row and row[0].strip():
                         images.append(row[0].strip())
             else:
-                # Plain text file
+                # Plain text file (or single-column CSV without commas)
                 f.seek(0)
-                for line in f:
+                lines = f.readlines()
+
+                # Skip header if first line is a known header name
+                start_idx = 0
+                if lines and lines[0].strip().lower() in ["alternative_image", "image", "name"]:
+                    start_idx = 1
+
+                for line in lines[start_idx:]:
                     line = line.strip()
                     if line and not line.startswith("#"):
                         images.append(line)
@@ -164,13 +296,38 @@ def read_input_file(file_path: Path) -> list[str]:
     return images
 
 
-def write_matched_csv(file_path: Path, pairs: list[tuple[str, str]]) -> None:
-    """Write matched image pairs to CSV file."""
+def write_matched_csv(file_path: Path, pairs: list[tuple[str, MatchResult]]) -> None:
+    """Write matched image pairs to CSV file with full matching metadata."""
+    with open(file_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "alternative_image",
+            "upstream_image",
+            "chainguard_image",
+            "upstream_confidence",
+            "match_confidence",
+            "upstream_method",
+            "match_method",
+        ])
+        for alt, result in pairs:
+            writer.writerow([
+                alt,
+                result.upstream_image or "",
+                result.chainguard_image,
+                f"{result.upstream_confidence:.2f}" if result.upstream_confidence is not None else "",
+                f"{result.confidence:.2f}",
+                result.upstream_method or "",
+                result.method,
+            ])
+
+
+def write_matched_intake(file_path: Path, pairs: list[tuple[str, MatchResult]]) -> None:
+    """Write matched image pairs to 2-column CSV suitable for gauge scan intake."""
     with open(file_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["alternative_image", "chainguard_image"])
-        for alt, cg in pairs:
-            writer.writerow([alt, cg])
+        for alt, result in pairs:
+            writer.writerow([alt, result.chainguard_image])
 
 
 def write_unmatched_file(file_path: Path, images: list[str]) -> None:

@@ -37,6 +37,7 @@
 ## Features
 
 ### Core Capabilities
+- **Automatic Image Matching**: Automatically find Chainguard equivalents for your images using a 4-tier matching strategy with AI-powered fuzzy matching (DFC mappings, manual overrides, heuristics, Claude LLM)
 - **Multiple Output Types**: Generate vulnerability summaries (HTML), cost analysis (XLSX), or pricing quotes (HTML + TXT)
 - **CHPs Scoring**: Container Hardening and Provenance Scanner integration for evaluating non-CVE security factors like provenance, SBOM quality, signing, and container hardening practices
 - **KEV Detection**: Optional integration with CISA's Known Exploited Vulnerabilities catalog to identify actively exploited CVEs in your images
@@ -111,7 +112,7 @@ docker run --rm \
   -v $(pwd):/workspace \
   -v /var/run/docker.sock:/var/run/docker.sock \
   gauge:latest \
-  --source /workspace/images.csv \
+  --input /workspace/images.csv \
   --output both \
   --output-dir /workspace \
   --customer "Customer Name"
@@ -259,7 +260,9 @@ gauge --platform linux/arm64 \
 
 ## Input Format
 
-Create a CSV file with image pairs (one per line):
+### Two-Column CSV (Manual Pairing)
+
+Create a CSV file with explicit image pairs:
 
 ```csv
 alternative_image,chainguard_image
@@ -270,13 +273,191 @@ postgres:16,cgr.dev/chainguard-private/postgres:latest
 
 Optional header row is automatically skipped.
 
+### Single-Column CSV (Automatic Matching)
+
+Alternatively, provide just alternative images and let Gauge automatically find Chainguard equivalents:
+
+```csv
+alternative_image
+python:3.12
+nginx:1.25
+postgres:16
+```
+
+When a single-column CSV is detected, Gauge uses a 4-tier matching strategy:
+1. **DFC Mappings** (95% confidence) - Chainguard's Docker File Converter built-in mappings
+2. **Manual Overrides** (100% confidence) - Local overrides in `config/image_mappings.yaml`
+3. **Heuristic Rules** (85% confidence) - Pattern-based matching with image verification
+4. **LLM-Powered Fuzzy Matching** (70%+ confidence) - Claude AI for complex image name transformations (enabled by default)
+
+Gauge will show the matched pairs and warn about any unmatched images. Only images with ≥70% confidence are included in the scan.
+
+You can control the matching behavior with CLI options:
+
+```bash
+# Scan with upstream discovery for private images
+gauge --input alternative-images.csv --find-upstream
+
+# Scan with LLM matching disabled (Tiers 1-3 only)
+gauge --input alternative-images.csv --disable-llm-matching
+
+# Scan with custom confidence threshold
+gauge --input alternative-images.csv --min-confidence 0.85
+
+# Scan and generate DFC contribution files for new mappings
+gauge --input alternative-images.csv --generate-dfc-pr
+```
+
+All matching options available in `gauge match` (see below) can also be used with the default `gauge` command for single-column CSV input.
+
+### Standalone Matching (Preview Mode)
+
+To preview matches without running a full scan, use the `gauge match` command:
+
+```bash
+# Match images and save to CSV
+gauge match --input images.txt -o matched.csv
+
+# With minimum confidence threshold
+gauge match --input images.txt -o matched.csv --min-confidence 0.85
+
+# Interactive mode for low-confidence matches
+gauge match --input images.txt -o matched.csv --interactive
+
+# Use offline DFC mappings
+gauge match --input images.txt -o matched.csv --dfc-mappings-file local-mappings.yaml
+```
+
+The `match` command outputs:
+- `matched.csv` - Successfully matched image pairs with full metadata (ready for scanning)
+- `unmatched.txt` - Images that couldn't be matched (only if there are unmatched images)
+
+### Upstream Image Discovery (For Private/Internal Images)
+
+If your images are hosted in private registries or have internal names, Gauge can automatically find their public upstream equivalents before matching to Chainguard:
+
+```bash
+# Enable upstream discovery
+gauge match --input images.txt -o matched.csv --find-upstream
+
+# With custom confidence thresholds
+gauge match --input images.txt -o matched.csv --find-upstream --upstream-confidence 0.8
+
+# Use manual upstream mappings for custom overrides
+gauge match --input images.txt -o matched.csv --find-upstream --upstream-mappings-file config/upstream_mappings.yaml
+```
+
+**How it works:**
+1. Input: `mycompany.io/python-app:v1` or `internal-nginx:prod`
+2. Upstream Discovery (4 strategies, confidence-scored):
+   - **Manual Mappings** (100%) - Custom overrides in `config/upstream_mappings.yaml`
+   - **Registry Strip** (90%) - Removes private registry prefix: `mycompany.io/python:3.12` → `python:3.12`
+   - **Common Registries** (80%) - Checks docker.io, quay.io, ghcr.io
+   - **Base Extraction** (70%) - Extracts base image: `internal-python-app` → `python:latest`
+3. Chainguard Matching: Found upstream image → Chainguard equivalent
+4. Output: Full audit trail in `matched.csv` showing both upstream and Chainguard matches
+
+**Output format with upstream discovery:**
+```csv
+alternative_image,upstream_image,chainguard_image,upstream_confidence,match_confidence,upstream_method,match_method
+mycompany.io/python:3.12,python:3.12,cgr.dev/chainguard/python:latest,0.90,0.95,registry_strip,dfc
+```
+
+**Manual upstream mappings** (`config/upstream_mappings.yaml`):
+```yaml
+# Map private/internal images to public upstream equivalents
+"company.io/python-app:v1": "python:3.12"
+"internal-nginx:prod": "nginx:1.25"
+"gcr.io/myproject/redis:latest": "redis:7.0"
+```
+
+### LLM-Powered Fuzzy Matching (Tier 4)
+
+**NEW:** Gauge now includes AI-powered image matching using Claude, enabled by default as Tier 4 fuzzy matching. This dramatically improves match rates for complex image names that can't be handled by rule-based heuristics.
+
+**Features:**
+- Uses Claude API for intelligent image name transformations
+- **Automatic verification** - All LLM suggestions are verified to exist before acceptance (prevents hallucinations)
+- Automatic caching to reduce API costs
+- Telemetry logging for match rate analysis
+- Configurable model selection (Sonnet, Opus, Haiku)
+- Special rules for OS images (debian, ubuntu, rhel → chainguard-base)
+- DFC contribution workflow for discovered mappings
+
+**Basic Usage:**
+
+```bash
+# LLM matching is enabled by default
+gauge match --input images.txt -o matched.csv
+
+# Disable LLM matching (use only Tiers 1-3)
+gauge match --input images.txt -o matched.csv --disable-llm-matching
+
+# Use specific Claude model
+gauge match --input images.txt -o matched.csv --llm-model claude-3-opus-20240229
+
+# Adjust confidence threshold
+gauge match --input images.txt -o matched.csv --llm-confidence-threshold 0.8
+
+# Generate DFC contribution files for high-confidence matches
+gauge match --input images.txt -o matched.csv --generate-dfc-pr
+```
+
+**Configuration:**
+
+Set your Anthropic API key:
+```bash
+export ANTHROPIC_API_KEY='your-api-key'
+# Or pass directly
+gauge match --input images.txt --anthropic-api-key 'your-api-key'
+```
+
+Get an API key at: https://console.anthropic.com/
+
+**Model Options:**
+- `claude-sonnet-4-5` (default) - Best balance of speed and accuracy
+- `claude-opus-4-1` - Highest accuracy, slower, more expensive
+- `claude-haiku-4-5` - Fastest, cheapest, lower accuracy
+
+**DFC Contribution Workflow:**
+
+When `--generate-dfc-pr` is enabled, Gauge generates two files for contributing new mappings back to the DFC project. This includes **both Tier 3 heuristic matches and Tier 4 LLM matches** with high confidence (≥85%):
+
+- `dfc-suggestions.yaml` - Suggested mappings with metadata (method, confidence, reasoning)
+- `dfc-suggestions.patch` - Git diff ready for PR creation
+
+```bash
+gauge match --input images.txt -o matched.csv --generate-dfc-pr
+
+# Generated files include successful heuristic and LLM matches:
+# - dfc-suggestions.yaml (mappings to review)
+# - dfc-suggestions.patch (git diff for PR)
+```
+
+**Why contribute back?** If Gauge found a match that's not in DFC yet (via heuristics or LLM), other users can benefit from it being added to the official DFC mappings.
+
+**Cache and Telemetry:**
+
+LLM responses are cached in `~/.cache/gauge/` to reduce API costs:
+- `llm_cache.db` - SQLite database of cached responses
+- `llm_telemetry.jsonl` - Match attempts, successes, latency metrics
+
+**Example Output:**
+```
+[1/10] ✓ Matched: ghcr.io/kyverno/background-controller:v1.10.3 → cgr.dev/chainguard-private/kyverno-background-controller:latest
+    (confidence: 85%, method: llm)
+    LLM reasoning: Kyverno background controller is a Kubernetes policy engine component with a direct Chainguard equivalent using hyphenated naming convention
+```
+
+See `gauge match --help` for all options.
+
 ## Command-Line Options
 
 ### Input/Output Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-s, --source` | `images.csv` | Source CSV file with image pairs |
+| `-i, --input` | `images.csv` | Input CSV file with image pairs or single-column alternative images |
 | `-o, --output` | `vuln_summary,cost_analysis` | Output types to generate (comma-separated): `cost_analysis` (XLSX), `vuln_summary` (HTML), `pricing` (HTML + TXT). Examples: `--output pricing`, `--output cost_analysis,pricing`, `--output vuln_summary,cost_analysis,pricing` |
 | `--output-dir` | `.` (current directory) | Output directory for generated reports |
 | `--pricing-policy` | `pricing-policy.yaml` | Pricing policy file for quote generation (see [Pricing Configuration](#pricing-configuration)) |
@@ -457,7 +638,7 @@ See `example-pricing-policy.yaml` for a complete example with all four tiers.
 
 ```bash
 # Generate only pricing quote
-gauge --source images.csv --customer "Acme Corp" --output pricing
+gauge --input images.csv --customer "Acme Corp" --output pricing
 
 # Generate pricing + cost analysis
 gauge --output pricing,cost_analysis
@@ -466,10 +647,10 @@ gauge --output pricing,cost_analysis
 gauge --pricing-policy custom-pricing.yaml --output pricing
 
 # Generate default outputs (vuln_summary + cost_analysis)
-gauge --source images.csv --customer "Acme Corp"
+gauge --input images.csv --customer "Acme Corp"
 
 # Generate all three output types
-gauge --source images.csv --customer "Acme Corp" --output vuln_summary,cost_analysis,pricing
+gauge --input images.csv --customer "Acme Corp" --output vuln_summary,cost_analysis,pricing
 ```
 
 #### Output
@@ -560,7 +741,7 @@ gauge --checkpoint-file /path/to/checkpoint.json
 Generate a simple assessment summary report:
 
 ```bash
-gauge --source my-images.csv \
+gauge --input my-images.csv \
       --output vuln_summary \
       --output-dir ./reports \
       --customer "Acme Corporation"
@@ -573,7 +754,7 @@ This generates `./reports/acme_corporation.html`.
 Generate a comprehensive cost analysis with ROI and FIPS calculations:
 
 ```bash
-gauge --source production-images.csv \
+gauge --input production-images.csv \
       --output cost_analysis \
       --output-dir ./reports \
       --customer "Acme Corp" \
@@ -590,7 +771,7 @@ This generates `./reports/acme_corp.xlsx` with FIPS cost analysis.
 Generate both assessment summary and cost analysis in one scan:
 
 ```bash
-gauge --source my-images.csv \
+gauge --input my-images.csv \
       --output both \
       --output-dir ./reports \
       --customer "Acme Corp" \
@@ -606,7 +787,7 @@ This generates both `./reports/acme_corp.html` and `./reports/acme_corp.xlsx`.
 Maximize scanning speed for large fleets:
 
 ```bash
-gauge --source large-fleet.csv \
+gauge --input large-fleet.csv \
       --output vuln_summary \
       --output-dir ./reports \
       --customer "Large Fleet" \
@@ -622,7 +803,7 @@ For long-running scans that may be interrupted, use checkpoint/resume functional
 
 ```bash
 # Start a long scan (creates checkpoint automatically)
-gauge --source large-fleet.csv \
+gauge --input large-fleet.csv \
       --output both \
       --output-dir ./reports \
       --customer "Fleet Analysis" \
@@ -633,7 +814,7 @@ gauge --source large-fleet.csv \
 # Run with --resume to continue from: .gauge_checkpoint.json
 
 # Resume from where you left off
-gauge --source large-fleet.csv \
+gauge --input large-fleet.csv \
       --output both \
       --output-dir ./reports \
       --customer "Fleet Analysis" \

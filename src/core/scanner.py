@@ -101,7 +101,8 @@ class VulnerabilityScanner:
         self,
         image: str,
         context: Optional[str] = None,
-        pair_index: Optional[int] = None
+        pair_index: Optional[int] = None,
+        upstream_image: Optional[str] = None
     ) -> ImageAnalysis:
         """
         Scan a single image for vulnerabilities.
@@ -110,6 +111,7 @@ class VulnerabilityScanner:
             image: Image reference to scan
             context: Context string for retry tracking (e.g., 'alternative', 'chainguard')
             pair_index: Index of the image pair being scanned (for retry tracking)
+            upstream_image: Optional upstream image to try as fallback if pull fails
 
         Returns:
             ImageAnalysis with scan results
@@ -123,7 +125,7 @@ class VulnerabilityScanner:
 
         # Check if we should update the image first
         if self.check_fresh_images:
-            image, used_fallback, pull_successful = self.docker.ensure_fresh_image(image, self.platform)
+            image, used_fallback, pull_successful = self.docker.ensure_fresh_image(image, self.platform, upstream_image=upstream_image)
             if used_fallback:
                 logger.warning(
                     f"Using {image} as fallback for {original_image}"
@@ -349,7 +351,7 @@ class VulnerabilityScanner:
         pair_index: Optional[int] = None
     ) -> ScanResult:
         """
-        Scan both images in a pair.
+        Scan both images in a pair concurrently.
 
         Args:
             pair: ImagePair to scan
@@ -361,16 +363,27 @@ class VulnerabilityScanner:
         logger.info(f"Scanning pair: {pair}")
 
         try:
-            alternative_analysis = self.scan_image(
-                pair.alternative_image,
-                context="alternative",
-                pair_index=pair_index
-            )
-            chainguard_analysis = self.scan_image(
-                pair.chainguard_image,
-                context="chainguard",
-                pair_index=pair_index
-            )
+            # Scan both images concurrently within the pair for better performance
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                # Submit both scans
+                # Pass upstream_image for alternative (if available) to enable upstream fallback
+                alt_future = executor.submit(
+                    self.scan_image,
+                    pair.alternative_image,
+                    context="alternative",
+                    pair_index=pair_index,
+                    upstream_image=pair.upstream_image
+                )
+                cg_future = executor.submit(
+                    self.scan_image,
+                    pair.chainguard_image,
+                    context="chainguard",
+                    pair_index=pair_index
+                )
+
+                # Wait for both to complete and collect results
+                alternative_analysis = alt_future.result()
+                chainguard_analysis = cg_future.result()
 
             return ScanResult(
                 pair=pair,
@@ -381,10 +394,26 @@ class VulnerabilityScanner:
 
         except Exception as e:
             logger.error(f"Failed to scan pair {pair}: {e}")
+            # Attempt to get partial results if one scan succeeded
+            alt_result = None
+            cg_result = None
+
+            try:
+                if 'alt_future' in locals():
+                    alt_result = alt_future.result(timeout=0)
+            except:
+                pass
+
+            try:
+                if 'cg_future' in locals():
+                    cg_result = cg_future.result(timeout=0)
+            except:
+                pass
+
             return ScanResult(
                 pair=pair,
-                alternative_analysis=None,
-                chainguard_analysis=None,
+                alternative_analysis=alt_result,
+                chainguard_analysis=cg_result,
                 scan_successful=False,
                 error_message=str(e),
             )
@@ -520,13 +549,11 @@ class VulnerabilityScanner:
             )
 
             if retry_successes:
-                logger.info("Successfully retried images:")
-                for fp in retry_successes:
-                    logger.info(f"  - {fp.image} ({fp.context})")
+                success_list = "\n".join(f"  - {fp.image} ({fp.context})" for fp in retry_successes)
+                logger.info(f"Successfully retried images:\n{success_list}")
 
             if retry_failures:
-                logger.warning("Failed retry attempts:")
-                for fp in retry_failures:
-                    logger.warning(f"  - {fp.image} ({fp.context})")
+                failure_list = "\n".join(f"  - {fp.image} ({fp.context})" for fp in retry_failures)
+                logger.warning(f"Failed retry attempts:\n{failure_list}")
 
         return results
