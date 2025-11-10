@@ -30,6 +30,34 @@ class TestValidateImageReference:
         result = validate_image_reference("my_custom_image:v1.0")
         assert result == "my_custom_image:v1.0"
 
+    def test_valid_digest_only(self):
+        """Test valid image with digest only (no tag)."""
+        result = validate_image_reference(
+            "longhornio/longhorn-instance-manager@sha256:76c527b1a4b0d1d2a07e65f58fb65bed5b6dcd23f27ad945bf8afb452eadd137"
+        )
+        assert "@sha256:" in result
+
+    def test_valid_tag_and_digest(self):
+        """Test valid image with both tag and digest."""
+        result = validate_image_reference(
+            "python:3.12@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+        assert ":3.12@sha256:" in result
+
+    def test_valid_registry_with_digest(self):
+        """Test valid image with registry and digest."""
+        result = validate_image_reference(
+            "cgr.dev/chainguard/python@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+        assert result.startswith("cgr.dev/chainguard/python@sha256:")
+
+    def test_valid_sha512_digest(self):
+        """Test valid image with sha512 digest."""
+        result = validate_image_reference(
+            "python@sha512:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
+        )
+        assert "@sha512:" in result
+
     def test_empty_image(self):
         """Test empty image reference."""
         with pytest.raises(ValidationException) as exc:

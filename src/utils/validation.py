@@ -46,9 +46,10 @@ def validate_image_reference(image: str, field_name: str = "image") -> str:
             field_name
         )
 
-    # Basic format validation (registry/repo:tag or repo:tag)
+    # Basic format validation (registry/repo:tag, repo@digest, or repo:tag@digest)
     # Allows: lowercase alphanumeric, dots, slashes, colons, hyphens, underscores
-    pattern = r'^[a-z0-9]+([\._\-][a-z0-9]+)*(\/[a-z0-9]+([\._\-][a-z0-9]+)*)*(:[a-zA-Z0-9\._\-]+)?$'
+    # Supports digest format: @sha256:hex or @sha512:hex
+    pattern = r'^[a-z0-9]+([\._\-][a-z0-9]+)*(\/[a-z0-9]+([\._\-][a-z0-9]+)*)*(:[a-zA-Z0-9\._\-]+)?(@[a-z0-9]+:[a-f0-9]+)?$'
     if not re.match(pattern, image, re.IGNORECASE):
         raise ValidationException(
             f"Invalid image reference format: {image}",
