@@ -215,6 +215,107 @@ class TestDockerClientFallback:
             assert mock_run.call_count == 2
 
 
+class TestImageSize:
+    """Test image size detection."""
+
+    @pytest.fixture
+    def docker_client(self):
+        """Create a DockerClient instance for testing."""
+        with patch.object(DockerClient, '_detect_runtime', return_value='docker'):
+            return DockerClient()
+
+    def test_get_image_size_mb_gigabytes(self, docker_client):
+        """Test parsing image size in gigabytes."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1.25GB\n", stderr="")
+            
+            size = docker_client.get_image_size_mb("python:3.12")
+            
+            assert size == 1280  # 1.25 * 1024 = 1280 MB
+
+    def test_get_image_size_mb_megabytes(self, docker_client):
+        """Test parsing image size in megabytes."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="234MB\n", stderr="")
+            
+            size = docker_client.get_image_size_mb("alpine:latest")
+            
+            assert size == 234
+
+    def test_get_image_size_mb_kilobytes(self, docker_client):
+        """Test parsing image size in kilobytes."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1536KB\n", stderr="")
+            
+            size = docker_client.get_image_size_mb("busybox:latest")
+            
+            assert size == 2  # 1536/1024 = 1.5, rounded to 2
+
+    def test_get_image_size_mb_bytes(self, docker_client):
+        """Test parsing image size in bytes."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="1048576B\n", stderr="")
+            
+            size = docker_client.get_image_size_mb("scratch:latest")
+            
+            assert size == 1  # 1048576 / (1024*1024) = 1 MB
+
+    def test_get_image_size_mb_docker_io_library(self, docker_client):
+        """Test image size with docker.io/library prefix tries short name."""
+        with patch('subprocess.run') as mock_run:
+            # First call with full name fails, second with short name succeeds
+            mock_run.side_effect = [
+                Mock(returncode=1, stdout="", stderr=""),
+                Mock(returncode=0, stdout="234MB\n", stderr=""),
+            ]
+            
+            size = docker_client.get_image_size_mb("docker.io/library/python:3.12")
+            
+            assert size == 234
+            assert mock_run.call_count == 2
+
+    def test_get_image_size_mb_docker_io_user(self, docker_client):
+        """Test image size with docker.io user image tries short name."""
+        with patch('subprocess.run') as mock_run:
+            # First call with full name fails, second with short name succeeds
+            mock_run.side_effect = [
+                Mock(returncode=1, stdout="", stderr=""),
+                Mock(returncode=0, stdout="156MB\n", stderr=""),
+            ]
+            
+            size = docker_client.get_image_size_mb("docker.io/myuser/myimage:v1")
+            
+            assert size == 156
+            assert mock_run.call_count == 2
+
+    def test_get_image_size_mb_chainguard_image(self, docker_client):
+        """Test image size for Chainguard images (cgr.dev)."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=0, stdout="15MB\n", stderr="")
+            
+            size = docker_client.get_image_size_mb("cgr.dev/chainguard/python:latest")
+            
+            assert size == 15
+
+    def test_get_image_size_mb_not_found(self, docker_client):
+        """Test image size when image is not found."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=1, stdout="", stderr="")
+            
+            size = docker_client.get_image_size_mb("nonexistent:image")
+            
+            assert size == 0.0
+
+    def test_get_image_size_mb_timeout(self, docker_client):
+        """Test image size with timeout."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = subprocess.TimeoutExpired("docker", 30)
+            
+            size = docker_client.get_image_size_mb("python:3.12")
+            
+            assert size == 0.0
+
+
 class TestEnsureFreshImage:
     """Test ensure_fresh_image with fallback integration."""
 

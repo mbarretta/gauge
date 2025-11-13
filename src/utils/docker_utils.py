@@ -164,28 +164,94 @@ class DockerClient:
         """
         Get image size in megabytes.
 
+        Uses 'docker images' command instead of 'inspect' because the .Size field
+        in inspect returns only the top layer size, not the full image size.
+
         Args:
             image: Image reference
 
         Returns:
             Size in MB, rounded to nearest integer
         """
-        try:
-            result = subprocess.run(
-                [self.runtime, "inspect", "--format={{.Size}}", image],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
+        def parse_size(size_str: str) -> float:
+            """Parse human-readable size string to MB."""
+            if not size_str:
+                return 0.0
+            
+            # Parse human-readable size (e.g., "1.25GB", "234MB", "45.3kB")
+            size_str = size_str.upper()
+            
+            # Extract numeric value
+            numeric_part = ""
+            unit = ""
+            for char in size_str:
+                if char.isdigit() or char == '.':
+                    numeric_part += char
+                elif char.isalpha():
+                    unit += char
+            
+            if not numeric_part:
+                return 0.0
+            
+            value = float(numeric_part)
+            
+            # Convert to MB
+            if "GB" in unit:
+                return round(value * 1024)
+            elif "MB" in unit:
+                return round(value)
+            elif "KB" in unit or "K" in unit:
+                return round(value / 1024)
+            elif "TB" in unit:
+                return round(value * 1024 * 1024)
+            elif "B" in unit and "KB" not in unit and "MB" not in unit and "GB" not in unit:
+                # Just bytes
+                return round(value / (1024 * 1024))
+            else:
+                # Unknown unit, assume MB
+                return round(value)
+        
+        # Try multiple image name variations
+        # Docker stores images with short names (e.g., "alpine") but we might query with full names
+        image_variations = [image]
+        
+        # Add short name variation for docker.io/library/* images
+        if image.startswith("docker.io/library/"):
+            short_name = image.replace("docker.io/library/", "")
+            image_variations.append(short_name)
+        elif image.startswith("docker.io/"):
+            # For other docker.io images, try without the registry prefix
+            short_name = image.replace("docker.io/", "")
+            image_variations.append(short_name)
+        
+        for img_name in image_variations:
+            try:
+                # Use docker images command which reports actual image size
+                # Format: {{.Size}} returns human-readable format like "1.25GB" or "234MB"
+                result = subprocess.run(
+                    [self.runtime, "images", img_name, "--format", "{{.Size}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
 
-            if result.returncode == 0:
-                size_bytes = int(result.stdout.strip())
-                size_mb = size_bytes / (1024 * 1024)
-                return round(size_mb)
-
-        except (subprocess.TimeoutExpired, ValueError) as e:
-            logger.debug(f"Failed to get size for {image}: {e}")
-
+                if result.returncode == 0:
+                    size_str = result.stdout.strip()
+                    if size_str:
+                        # Take first line in case multiple images match
+                        first_line = size_str.split('\n')[0].strip()
+                        if first_line:
+                            size_mb = parse_size(first_line)
+                            if size_mb > 0:
+                                logger.debug(f"Got size for {img_name}: {size_mb} MB")
+                                return size_mb
+                        
+            except (subprocess.TimeoutExpired, ValueError) as e:
+                logger.debug(f"Failed to get size for {img_name}: {e}")
+                continue
+        
+        # If all variations failed
+        logger.debug(f"Could not get size for {image} (tried: {image_variations})")
         return 0.0
 
     def get_image_created_date(self, image: str) -> Optional[str]:
