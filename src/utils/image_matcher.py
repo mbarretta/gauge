@@ -22,6 +22,7 @@ from constants import (
 )
 from integrations.dfc_mappings import DFCMappings
 from integrations.github_metadata import GitHubMetadataClient
+from utils.image_verification import ImageVerificationService
 from utils.upstream_finder import UpstreamImageFinder
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,33 @@ class MatchResult:
 
     reasoning: Optional[str] = None
     """LLM reasoning (if method is llm)"""
+
+
+def strip_version_suffix(name: str) -> str:
+    """
+    Strip version suffixes and numbers from image names.
+
+    Handles patterns like:
+    - mongodb_8.x → mongodb
+    - solr-9 → solr
+    - redis7 → redis
+    - ruby33 → ruby
+    - airflowv3 → airflow
+
+    Args:
+        name: Image name to strip version from
+
+    Returns:
+        Name with version suffix removed
+    """
+    # Strip version patterns with "v" prefix first (e.g., "airflowv3" → "airflow")
+    name = re.sub(r'v\d+(?:\.\w+)?$', '', name)
+
+    # Strip trailing version patterns like "-9", "_8.x", "7", "33"
+    # Pattern: optional separator (-, _, or nothing) + version number + optional .x suffix
+    name = re.sub(r'[-_]?\d+(?:\.\w+)?$', '', name)
+
+    return name
 
 
 class CandidateStrategy:
@@ -189,6 +217,160 @@ class NameVariationStrategy(CandidateStrategy):
         return candidates
 
 
+class BaseOSStrategy(CandidateStrategy):
+    """
+    Strategy for mapping base OS images to chainguard-base.
+
+    Handles comprehensive list of minimal OS base images from various vendors.
+    Applies version stripping and modifier removal (base, minimal, fips, etc.).
+    """
+
+    # Exhaustive list of base OS image patterns
+    BASE_OS_PATTERNS = {
+        # Red Hat Universal Base Images (UBI)
+        "ubi",
+        "ubi-minimal",
+        "ubi-micro",
+        "ubi-init",
+
+        # Alpine Linux
+        "alpine",
+
+        # Debian
+        "debian",
+        "debian-slim",
+
+        # Ubuntu
+        "ubuntu",
+        "ubuntu-minimal",
+
+        # CentOS/Rocky/Alma
+        "centos",
+        "rockylinux",
+        "almalinux",
+
+        # Amazon Linux
+        "amazonlinux",
+        "al2023",
+
+        # Google Distroless
+        "distroless",
+        "distroless-base",
+        "static-debian",
+        "base-debian",
+
+        # Scratch (empty base)
+        "scratch",
+
+        # BusyBox
+        "busybox",
+
+        # Fedora
+        "fedora",
+        "fedora-minimal",
+
+        # OpenSUSE
+        "opensuse",
+        "leap",
+        "tumbleweed",
+
+        # Other minimal bases
+        "wolfi",
+        "wolfi-base",
+        "chainguard-base",  # Normalize to itself
+        "base",  # Generic "base" images
+    }
+
+    def generate(self, base_name: str, full_image: str, has_fips: bool) -> list[str]:
+        """Generate candidates for base OS images."""
+        # Normalize the image name
+        normalized = self._normalize_os_name(base_name, full_image)
+
+        if not normalized:
+            return []
+
+        # Check if normalized name matches any base OS pattern
+        if normalized not in self.BASE_OS_PATTERNS:
+            return []
+
+        # Map to chainguard-base
+        candidates = []
+
+        if has_fips:
+            # Try FIPS variant first
+            candidates.append(f"{CHAINGUARD_PRIVATE_REGISTRY}/chainguard-base-fips:latest")
+
+        # Standard chainguard-base
+        candidates.append(f"{CHAINGUARD_PRIVATE_REGISTRY}/chainguard-base:latest")
+
+        return candidates
+
+    # OS normalization configuration
+    _VERSION_STRIP_PATTERNS = [
+        # Pattern: (regex_pattern, replacement) - applied in order
+        (r"^(ubi|alpine|centos|rockylinux|almalinux)\d+", r"\1"),  # Strip trailing digits
+        (r"^(debian|ubuntu)[-_]\d+(?:\.\d+)?", r"\1"),              # Strip version with separator
+        (r"^fedora[-_]?\d+", "fedora"),                              # Fedora versions
+    ]
+
+    _OS_ALIASES = {
+        # Exact name mappings
+        "al": "amazonlinux",      # After version stripping: al2023, al2 → al
+        "al2": "amazonlinux",     # Before version stripping
+        "al2023": "amazonlinux",  # Before version stripping
+        "al2022": "amazonlinux",  # Before version stripping
+    }
+
+    _SUBSTRING_NORMALIZATIONS = [
+        # If name contains substring, normalize to target
+        ("distroless", "distroless"),
+        ("leap", "leap"),
+        ("tumbleweed", "tumbleweed"),
+    ]
+
+    def _normalize_os_name(self, base_name: str, full_image: str) -> Optional[str]:
+        """
+        Normalize OS image name by stripping versions, modifiers, and special characters.
+
+        Handles patterns like:
+        - ubi8, ubi9, ubi10 → ubi
+        - alpine3 → alpine
+        - debian-12-slim → debian-slim
+        - al2023 → amazonlinux
+
+        Args:
+            base_name: Base image name extracted from full reference
+            full_image: Full image reference for context
+
+        Returns:
+            Normalized OS name or None if not a base OS image
+        """
+        name = base_name.lower()
+
+        # Strip version suffixes first
+        name = strip_version_suffix(name)
+
+        # Strip common modifiers (preserve meaningful variants like -micro, -minimal, -slim)
+        if name.endswith("-base") and name != "base":
+            name = name.replace("-base", "")
+        name = re.sub(r"[-_]fips$", "", name)
+
+        # Apply version-stripping patterns
+        for pattern, replacement in self._VERSION_STRIP_PATTERNS:
+            name = re.sub(pattern, replacement, name)
+
+        # Apply exact aliases
+        name = self._OS_ALIASES.get(name, name)
+
+        # Apply substring-based normalizations (check prefix to avoid false positives)
+        for substring, target in self._SUBSTRING_NORMALIZATIONS:
+            if name.startswith(substring):
+                name = target
+                break
+
+        return name if name else None
+
+
 class TierMatcher:
     """
     Base class for tier-based image matchers.
@@ -305,9 +487,11 @@ class Tier3HeuristicMatcher(TierMatcher):
         Args:
             github_token: GitHub token for metadata API access (for image verification)
         """
-        self.github_metadata = GitHubMetadataClient(github_token=github_token)
+        self.image_verifier = ImageVerificationService(github_token=github_token)
         # Initialize candidate generation strategies
+        # Order matters: more specific strategies should come first
         self.strategies = [
+            BaseOSStrategy(),  # Check for base OS images first
             BitnamiStrategy(),
             DirectMatchStrategy(),
             PathFlatteningStrategy(),
@@ -376,34 +560,14 @@ class Tier3HeuristicMatcher(TierMatcher):
         # Strip FIPS suffixes to avoid double-suffixing
         image = re.sub(r"[-_]fips$", "", image)
 
+        # Strip version suffixes (e.g., mongodb_8.x → mongodb, redis7 → redis)
+        image = strip_version_suffix(image)
+
         return image
 
     def _verify_image_exists(self, image: str) -> bool:
         """Verify if Chainguard image exists."""
-        # Extract image name from reference
-        if image.startswith(f"{CHAINGUARD_PRIVATE_REGISTRY}/") or image.startswith(f"{CHAINGUARD_PUBLIC_REGISTRY}/"):
-            parts = image.split("/")
-            if len(parts) >= 3:
-                image_name = parts[2].split(":")[0]
-
-                # Try to fetch metadata from GitHub API
-                try:
-                    tier = self.github_metadata.get_image_tier(image_name)
-                    if tier is not None:
-                        return True
-                except Exception as e:
-                    logger.debug(f"GitHub metadata not found for {image_name}: {e}")
-
-                # Fallback to docker manifest inspect
-                logger.debug(f"Falling back to docker verification for {image}")
-                from utils.docker_utils import image_exists_in_registry
-                try:
-                    return image_exists_in_registry(image)
-                except Exception as e:
-                    logger.debug(f"Docker verification failed for {image}: {e}")
-                    return False
-
-        return False
+        return self.image_verifier.verify_image_exists(image)
 
 
 class Tier4LLMMatcher(TierMatcher):
@@ -418,7 +582,7 @@ class Tier4LLMMatcher(TierMatcher):
             github_token: GitHub token for image verification
         """
         self.llm_matcher = llm_matcher
-        self.github_metadata = GitHubMetadataClient(github_token=github_token)
+        self.image_verifier = ImageVerificationService(github_token=github_token)
 
     def match(self, image: str) -> Optional[MatchResult]:
         """Match using LLM fuzzy matching."""
@@ -427,14 +591,15 @@ class Tier4LLMMatcher(TierMatcher):
 
         llm_result = self.llm_matcher.match(image)
         if llm_result.chainguard_image and llm_result.confidence >= self.llm_matcher.confidence_threshold:
-            # Verify the LLM-suggested image actually exists
-            if self._verify_image_exists(llm_result.chainguard_image):
+            # Verify the LLM-suggested image actually exists (try aliases first)
+            verified_image, exists = self._verify_with_aliases(llm_result.chainguard_image)
+            if exists:
                 logger.debug(
-                    f"LLM match found and verified for {image}: {llm_result.chainguard_image} "
+                    f"LLM match found and verified for {image}: {verified_image} "
                     f"(confidence: {llm_result.confidence:.0%})"
                 )
                 return MatchResult(
-                    chainguard_image=llm_result.chainguard_image,
+                    chainguard_image=verified_image,
                     confidence=llm_result.confidence,
                     method="llm",
                     reasoning=llm_result.reasoning,
@@ -447,32 +612,71 @@ class Tier4LLMMatcher(TierMatcher):
 
         return None
 
-    def _verify_image_exists(self, image: str) -> bool:
-        """Verify if Chainguard image exists."""
-        # Extract image name from reference
+    def _get_image_name_aliases(self, image_name: str) -> list[str]:
+        """Get common aliases for an image name."""
+        aliases = [image_name]
+
+        # Common name variations
+        name_mappings = {
+            'postgresql': 'postgres',
+            'postgres': 'postgresql',
+            'nodejs': 'node',
+            'node-js': 'node',
+        }
+
+        # Check for exact mappings
+        if image_name in name_mappings:
+            aliases.append(name_mappings[image_name])
+
+        # Check for name with suffix (e.g., postgresql-iamguarded → postgres-iamguarded)
+        for old, new in name_mappings.items():
+            if image_name.startswith(old + '-'):
+                aliases.append(image_name.replace(old, new, 1))
+            if image_name.startswith(new + '-'):
+                aliases.append(image_name.replace(new, old, 1))
+
+        return list(set(aliases))  # Remove duplicates
+
+    def _verify_with_aliases(self, image: str) -> tuple[str, bool]:
+        """
+        Verify if image exists, trying common name aliases.
+
+        Returns:
+            Tuple of (verified_image_name, exists)
+        """
+        # Try the original image first
+        if self._verify_image_exists(image):
+            return (image, True)
+
+        # Extract components to try aliases
         if image.startswith(f"{CHAINGUARD_PRIVATE_REGISTRY}/") or image.startswith(f"{CHAINGUARD_PUBLIC_REGISTRY}/"):
             parts = image.split("/")
             if len(parts) >= 3:
-                image_name = parts[2].split(":")[0]
+                registry = "/".join(parts[:2])
+                image_with_tag = parts[2]
 
-                # Try to fetch metadata from GitHub API
-                try:
-                    tier = self.github_metadata.get_image_tier(image_name)
-                    if tier is not None:
-                        return True
-                except Exception as e:
-                    logger.debug(f"GitHub metadata not found for {image_name}: {e}")
+                # Split image name and tag
+                if ":" in image_with_tag:
+                    image_name, tag = image_with_tag.rsplit(":", 1)
+                else:
+                    image_name, tag = image_with_tag, "latest"
 
-                # Fallback to docker manifest inspect
-                logger.debug(f"Falling back to docker verification for {image}")
-                from utils.docker_utils import image_exists_in_registry
-                try:
-                    return image_exists_in_registry(image)
-                except Exception as e:
-                    logger.debug(f"Docker verification failed for {image}: {e}")
-                    return False
+                # Try each alias
+                for alias in self._get_image_name_aliases(image_name):
+                    if alias == image_name:
+                        continue  # Already tried
 
-        return False
+                    aliased_image = f"{registry}/{alias}:{tag}"
+                    logger.debug(f"Trying alias: {aliased_image}")
+                    if self._verify_image_exists(aliased_image):
+                        logger.info(f"Found image using alias: {image} → {aliased_image}")
+                        return (aliased_image, True)
+
+        return (image, False)
+
+    def _verify_image_exists(self, image: str) -> bool:
+        """Verify if Chainguard image exists."""
+        return self.image_verifier.verify_image_exists(image)
 
 
 class ImageMatcher:

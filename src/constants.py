@@ -30,8 +30,8 @@ CHAINGUARD_IMAGE_COST = 29000
 # Concurrency and Performance
 # ============================================================================
 
-DEFAULT_MAX_WORKERS = 4
-"""Default number of concurrent workers for parallel scanning."""
+DEFAULT_MAX_WORKERS = 2
+"""Default number of concurrent workers for parallel scanning (reduced from 4 to reduce Docker daemon contention)."""
 
 # ============================================================================
 # Image Matching Configuration
@@ -107,6 +107,21 @@ API_REQUEST_TIMEOUT = 30
 
 KEV_CATALOG_TIMEOUT = 30
 """Timeout for KEV catalog download (30 seconds)."""
+
+DOCKER_PULL_TIMEOUT = 300
+"""Timeout for Docker image pull operations (5 minutes)."""
+
+DOCKER_MANIFEST_TIMEOUT = 120
+"""Timeout for Docker manifest inspection (2 minutes)."""
+
+DOCKER_QUICK_CHECK_TIMEOUT = 5
+"""Timeout for quick Docker status checks (5 seconds)."""
+
+GITHUB_CLI_TIMEOUT = 10
+"""Timeout for GitHub CLI operations (10 seconds)."""
+
+CLI_SUBPROCESS_TIMEOUT = 60
+"""Timeout for general CLI subprocess operations (1 minute)."""
 
 # ============================================================================
 # CVE Monthly Occurrence Ratios

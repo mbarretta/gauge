@@ -13,7 +13,13 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Optional
 
-from constants import DEFAULT_MAX_WORKERS, DEFAULT_PLATFORM
+from constants import (
+    DEFAULT_MAX_WORKERS,
+    DEFAULT_PLATFORM,
+    VERSION_CHECK_TIMEOUT,
+    SYFT_TIMEOUT,
+    GRYPE_TIMEOUT,
+)
 from core.cache import ScanCache
 from core.models import (
     ImageAnalysis,
@@ -88,7 +94,7 @@ class VulnerabilityScanner:
                 result = subprocess.run(
                     [tool, "version"],
                     capture_output=True,
-                    timeout=5
+                    timeout=VERSION_CHECK_TIMEOUT
                 )
                 if result.returncode != 0:
                     raise RuntimeError(f"{tool} not found or not working")
@@ -125,7 +131,7 @@ class VulnerabilityScanner:
 
         # Check if we should update the image first
         if self.check_fresh_images:
-            image, used_fallback, pull_successful = self.docker.ensure_fresh_image(image, self.platform, upstream_image=upstream_image)
+            image, used_fallback, pull_successful, error_type = self.docker.ensure_fresh_image(image, self.platform, upstream_image=upstream_image)
             if used_fallback:
                 logger.warning(
                     f"Using {image} as fallback for {original_image}"
@@ -141,6 +147,7 @@ class VulnerabilityScanner:
                         platform=self.platform,
                         error_message=error_msg,
                         context=context,
+                        error_type=error_type,
                         pair_index=pair_index
                     )
 
@@ -252,7 +259,7 @@ class VulnerabilityScanner:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=SYFT_TIMEOUT,
                 check=True
             )
 
@@ -270,7 +277,7 @@ class VulnerabilityScanner:
                 error_msg += f"\nStdout: {e.stdout.strip()}"
             raise RuntimeError(error_msg) from e
         except subprocess.TimeoutExpired as e:
-            raise RuntimeError(f"Syft scan timed out after 300 seconds") from e
+            raise RuntimeError(f"Syft scan timed out after {SYFT_TIMEOUT} seconds") from e
 
     def _run_grype_on_sbom(self, sbom_json: str, image_name: str) -> tuple[VulnerabilityCount, list[str]]:
         """
@@ -292,7 +299,7 @@ class VulnerabilityScanner:
                 input=sbom_json,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=GRYPE_TIMEOUT,
                 check=True
             )
 
@@ -467,7 +474,80 @@ class VulnerabilityScanner:
             logger.info(f"Processing {self.retry_queue.size()} failed image pulls for retry...")
             results = self._process_retry_queue(results, pairs)
 
+        # Display failure classification summary
+        self._display_failure_summary()
+
         return results
+
+    def _display_failure_summary(self) -> None:
+        """Display categorized summary of all failures."""
+        failed_pulls = self.retry_queue.get_all()
+
+        if not failed_pulls:
+            return
+
+        # Categorize failures by error type
+        categories: dict[str, list[str]] = {
+            "auth": [],
+            "timeout": [],
+            "rate_limit": [],
+            "not_found": [],
+            "unknown": []
+        }
+
+        for failed_pull in failed_pulls:
+            error_type = failed_pull.error_type
+            categories.setdefault(error_type, []).append(failed_pull.image)
+
+        # Build categorized summary message
+        summary_parts = []
+
+        if categories.get("auth"):
+            images = categories["auth"]
+            # Extract unique registries from auth-failed images
+            registries = set()
+            for img in images:
+                registry = self.docker._extract_registry_from_image(img)
+                registries.add(registry)
+
+            registry_list = "\n    ".join(sorted(registries))
+            summary_parts.append(
+                f"Authentication required ({len(images)} images):\n"
+                f"  Registries:\n    {registry_list}\n"
+                f"  → Run: docker login <registry>"
+            )
+
+        if categories.get("timeout"):
+            count = len(categories["timeout"])
+            summary_parts.append(
+                f"Timed out after 120s ({count} images):\n"
+                f"  → Try: --max-workers 1 (reduce concurrency)\n"
+                f"  → Or check network/Docker daemon performance"
+            )
+
+        if categories.get("rate_limit"):
+            count = len(categories["rate_limit"])
+            summary_parts.append(
+                f"Rate limited ({count} images):\n"
+                f"  → Wait a few minutes and retry\n"
+                f"  → Using mirror.gcr.io fallback for Docker Hub images"
+            )
+
+        if categories.get("not_found"):
+            count = len(categories["not_found"])
+            summary_parts.append(
+                f"Not found after all fallbacks ({count} images):\n"
+                f"  → Verify image names and tags\n"
+                f"  → Check if images exist in registry"
+            )
+
+        if categories.get("unknown"):
+            count = len(categories["unknown"])
+            summary_parts.append(f"Unknown errors ({count} images)")
+
+        if summary_parts:
+            summary = "\n\n".join(summary_parts)
+            logger.warning(f"\nFailure Summary:\n{summary}")
 
     def _process_retry_queue(
         self,
@@ -487,12 +567,22 @@ class VulnerabilityScanner:
         failed_pulls = self.retry_queue.get_all()
         retry_successes = []
         retry_failures = []
+        skipped_permanent_failures = []
 
         for failed_pull in failed_pulls:
+            # Skip retrying permanent failures
+            if failed_pull.error_type in ("auth", "not_found"):
+                logger.debug(
+                    f"Skipping retry for {failed_pull.image} - permanent failure "
+                    f"(error_type: {failed_pull.error_type})"
+                )
+                skipped_permanent_failures.append(failed_pull)
+                continue
+
             logger.info(f"Retrying pull for {failed_pull.image} ({failed_pull.context})...")
 
             # Attempt to pull the image again
-            image, used_fallback, pull_successful = self.docker.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = self.docker.pull_image_with_fallback(
                 failed_pull.image,
                 failed_pull.platform
             )
@@ -542,10 +632,11 @@ class VulnerabilityScanner:
                 logger.warning(f"✗ Retry failed for {failed_pull.image}")
 
         # Log retry summary
-        if retry_successes or retry_failures:
+        if retry_successes or retry_failures or skipped_permanent_failures:
             logger.info(
                 f"Retry complete: {len(retry_successes)} succeeded, "
-                f"{len(retry_failures)} failed"
+                f"{len(retry_failures)} failed, "
+                f"{len(skipped_permanent_failures)} skipped (permanent failures)"
             )
 
             if retry_successes:
@@ -555,5 +646,12 @@ class VulnerabilityScanner:
             if retry_failures:
                 failure_list = "\n".join(f"  - {fp.image} ({fp.context})" for fp in retry_failures)
                 logger.warning(f"Failed retry attempts:\n{failure_list}")
+
+            if skipped_permanent_failures:
+                skipped_list = "\n".join(
+                    f"  - {fp.image} ({fp.context}) - {fp.error_type}"
+                    for fp in skipped_permanent_failures
+                )
+                logger.info(f"Skipped permanent failures (not retried):\n{skipped_list}")
 
         return results

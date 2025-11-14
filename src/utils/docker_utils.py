@@ -11,7 +11,15 @@ import os
 import subprocess
 from typing import Optional
 
-from constants import DEFAULT_PLATFORM
+from constants import (
+    DEFAULT_PLATFORM,
+    VERSION_CHECK_TIMEOUT,
+    API_REQUEST_TIMEOUT,
+    DOCKER_PULL_TIMEOUT,
+    DOCKER_MANIFEST_TIMEOUT,
+    DOCKER_QUICK_CHECK_TIMEOUT,
+    CLI_SUBPROCESS_TIMEOUT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +46,7 @@ class DockerClient:
                 result = subprocess.run(
                     [cmd, "--version"],
                     capture_output=True,
-                    timeout=5
+                    timeout=VERSION_CHECK_TIMEOUT
                 )
                 if result.returncode == 0:
                     return cmd
@@ -62,7 +70,7 @@ class DockerClient:
                 [self.runtime, "inspect", "--format={{.Id}}", image],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=API_REQUEST_TIMEOUT
             )
 
             if result.returncode == 0:
@@ -91,7 +99,7 @@ class DockerClient:
                 [self.runtime, "manifest", "inspect", image],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=API_REQUEST_TIMEOUT
             )
 
             if result.returncode != 0:
@@ -122,7 +130,7 @@ class DockerClient:
             logger.debug(f"Failed to get remote digest for {image}: {e}")
             return None
 
-    def ensure_fresh_image(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool]:
+    def ensure_fresh_image(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool, str]:
         """
         Ensure local image is up-to-date with remote, with intelligent fallback strategies.
 
@@ -132,10 +140,11 @@ class DockerClient:
             upstream_image: Optional upstream image to try as fallback (e.g., docker.io equivalent)
 
         Returns:
-            Tuple of (image_used, used_fallback, pull_successful) where:
+            Tuple of (image_used, used_fallback, pull_successful, error_type) where:
                 - image_used: The actual image reference that was used
                 - used_fallback: True if any fallback was used, False otherwise
                 - pull_successful: True if image was successfully pulled, False otherwise
+                - error_type: Type of error if pull failed ("none" if successful)
         """
         try:
             # Default to linux/amd64 for consistency across environments
@@ -154,11 +163,11 @@ class DockerClient:
                 return self.pull_image_with_fallback(image, platform, upstream_image=upstream_image)
 
             logger.debug(f"Image {image} is up-to-date")
-            return image, False, True
+            return image, False, True, "none"
 
         except subprocess.TimeoutExpired:
             logger.warning(f"Timeout pulling {image}")
-            return image, False, False
+            return image, False, False, "timeout"
 
     def get_image_size_mb(self, image: str) -> float:
         """
@@ -232,7 +241,7 @@ class DockerClient:
                     [self.runtime, "images", img_name, "--format", "{{.Size}}"],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=API_REQUEST_TIMEOUT
                 )
 
                 if result.returncode == 0:
@@ -269,7 +278,7 @@ class DockerClient:
                 [self.runtime, "inspect", "--format={{.Created}}", image],
                 capture_output=True,
                 text=True,
-                timeout=30
+                timeout=API_REQUEST_TIMEOUT
             )
 
             if result.returncode == 0:
@@ -302,7 +311,7 @@ class DockerClient:
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=300
+                timeout=DOCKER_PULL_TIMEOUT
             )
 
             return result.returncode == 0
@@ -325,7 +334,7 @@ class DockerClient:
             result = subprocess.run(
                 [self.runtime, "manifest", "inspect", image],
                 capture_output=True,
-                timeout=30
+                timeout=API_REQUEST_TIMEOUT
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -400,19 +409,122 @@ class DockerClient:
                 [self.runtime, "pull", "--platform", platform, image],
                 capture_output=True,
                 text=True,
-                timeout=60
+                timeout=DOCKER_MANIFEST_TIMEOUT  # Increased from 60s to handle authenticated registries with concurrent load
             )
+
+            # Check if image already exists with this digest
+            # Docker returns non-zero exit code with "cannot overwrite digest" when
+            # trying to pull an image that's already present locally
+            if result.returncode != 0 and "cannot overwrite digest" in result.stderr.lower():
+                logger.debug(f"Image {image} already present locally (digest exists)")
+                return True, ""  # Treat as success
+
             return result.returncode == 0, result.stderr
         except subprocess.TimeoutExpired:
             return False, "timeout"
 
+    def _extract_registry_from_image(self, image: str) -> str:
+        """
+        Extract registry hostname from image reference.
+
+        Args:
+            image: Full image reference (e.g., registry.example.com/repo/image:tag)
+
+        Returns:
+            Registry hostname or "docker.io" for Docker Hub images
+        """
+        # Remove tag/digest if present
+        if "@" in image:
+            image = image.split("@")[0]
+        if ":" in image and "/" in image:
+            # Check if : appears before first / (indicates registry with port)
+            first_slash = image.index("/")
+            first_colon = image.index(":")
+            if first_colon < first_slash:
+                # Has port, take everything before first /
+                return image.split("/")[0]
+            # No port, remove tag
+            image = image.rsplit(":", 1)[0]
+
+        # Check if image has registry prefix
+        if "/" in image:
+            parts = image.split("/")
+            # If first part has . or : or is localhost, it's a registry
+            if "." in parts[0] or ":" in parts[0] or parts[0] == "localhost":
+                return parts[0]
+
+        # Default to Docker Hub
+        return "docker.io"
+
+    def _is_auth_error(self, stderr: str) -> bool:
+        """
+        Check if error is due to authentication/authorization failure.
+
+        These are permanent failures that should not be retried with fallback strategies.
+
+        Args:
+            stderr: Error output from docker command
+
+        Returns:
+            True if error is authentication-related
+        """
+        stderr_lower = stderr.lower()
+
+        auth_errors = [
+            "401",
+            "403",
+            "unauthorized",
+            "forbidden",
+            "denied",
+            "authentication required",
+            "access denied",
+            "no basic auth credentials",
+            "authentication failed",
+            "not authorized",
+            "authorization failed"
+        ]
+
+        return any(msg in stderr_lower for msg in auth_errors)
+
+    def classify_error_type(self, stderr: str) -> str:
+        """
+        Classify the type of error from stderr output.
+
+        Args:
+            stderr: Error output from docker command
+
+        Returns:
+            Error type: "auth", "timeout", "rate_limit", "not_found", or "unknown"
+        """
+        if stderr == "timeout":
+            return "timeout"
+
+        stderr_lower = stderr.lower()
+
+        # Check error types in priority order
+        if self._is_auth_error(stderr):
+            return "auth"
+
+        if any(msg in stderr_lower for msg in ["toomanyrequests", "rate limit", "too many requests"]):
+            return "rate_limit"
+
+        if any(msg in stderr_lower for msg in ["not found", "manifest unknown", "does not exist", "no such image", "404"]):
+            return "not_found"
+
+        return "unknown"
+
     def _is_recoverable_error(self, stderr: str) -> bool:
         """Check if error is recoverable with fallback strategies."""
+        # Authentication errors are NOT recoverable with fallbacks
+        if self._is_auth_error(stderr):
+            return False
+
         stderr_lower = stderr.lower()
 
         not_found_errors = ["not found", "manifest unknown", "does not exist", "no such image", "404"]
         rate_limit_errors = ["toomanyrequests", "rate limit", "too many requests"]
-        connection_errors = ["no such host", "connection refused", "dial tcp", "no basic auth credentials", "unauthorized"]
+        # Removed "unauthorized" and "no basic auth credentials" from connection_errors
+        connection_errors = ["no such host", "connection refused", "dial tcp"]
 
         return any(msg in stderr_lower for msg in not_found_errors + rate_limit_errors + connection_errors)
 
@@ -429,7 +541,7 @@ class DockerClient:
         base_image = image.rsplit(":", 1)[0]
         return f"{base_image}:latest"
 
-    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool]:
+    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool, str]:
         """
         Pull an image from registry with intelligent fallback strategies.
 
@@ -445,34 +557,56 @@ class DockerClient:
             upstream_image: Optional upstream image to try as fallback (e.g., docker.io equivalent)
 
         Returns:
-            Tuple of (image_used, used_fallback, pull_successful)
+            Tuple of (image_used, used_fallback, pull_successful, error_type)
+            error_type is one of: "none", "auth", "timeout", "rate_limit", "not_found", "unknown"
         """
         platform = platform or DEFAULT_PLATFORM
         original_image = image
+        last_stderr = ""
 
         # Strategy 1: Try to pull the exact image
         logger.debug(f"Attempting to pull {image}")
         success, stderr = self._attempt_pull(image, platform)
+        last_stderr = stderr
 
         if success:
             logger.debug(f"Successfully pulled {image}")
-            return image, False, True
+            return image, False, True, "none"
 
         # Check if error is recoverable
-        if not self._is_recoverable_error(stderr):
-            logger.error(f"Failed to pull {image}: {stderr}")
-            return image, False, False
+        is_auth_error = self._is_auth_error(stderr)
+        is_recoverable = self._is_recoverable_error(stderr)
 
-        logger.warning(f"Image {image} not found or rate limited, trying fallback strategies")
+        # For auth errors, try upstream if available before giving up
+        if not is_recoverable and not (is_auth_error and upstream_image):
+            # Provide actionable advice for authentication errors
+            if is_auth_error:
+                registry = self._extract_registry_from_image(image)
+                logger.error(
+                    f"Authentication required for {image}\n"
+                    f"  Registry: {registry}\n"
+                    f"  Error: {stderr.strip()}\n"
+                    f"  → Run: docker login {registry}"
+                )
+            else:
+                logger.error(f"Failed to pull {image}: {stderr}")
+            error_type = self.classify_error_type(stderr)
+            return image, False, False, error_type
+
+        if is_auth_error and upstream_image:
+            logger.warning(f"Authentication failed for {image}, trying upstream fallback")
+        else:
+            logger.warning(f"Image {image} not found or rate limited, trying fallback strategies")
 
         # Strategy 2: Try upstream image if provided (e.g., docker.io equivalent for private registry)
         if upstream_image:
             logger.warning(f"Trying upstream fallback: {upstream_image}")
             success, stderr = self._attempt_pull(upstream_image, platform)
+            last_stderr = stderr
 
             if success:
                 logger.info(f"✓ Upstream fallback successful: {original_image} → {upstream_image}")
-                return upstream_image, True, True
+                return upstream_image, True, True, "none"
 
             logger.debug(f"Upstream fallback failed: {stderr}")
 
@@ -481,10 +615,11 @@ class DockerClient:
         if mirror_image:
             logger.warning(f"Trying mirror.gcr.io fallback: {mirror_image}")
             success, stderr = self._attempt_pull(mirror_image, platform)
+            last_stderr = stderr
 
             if success:
                 logger.info(f"✓ Mirror.gcr.io fallback successful for {mirror_image}")
-                return mirror_image, True, True
+                return mirror_image, True, True, "none"
 
             logger.debug(f"Mirror.gcr.io fallback failed: {stderr}")
 
@@ -493,16 +628,18 @@ class DockerClient:
         if latest_image:
             logger.warning(f"Trying :latest fallback: {latest_image}")
             success, stderr = self._attempt_pull(latest_image, platform)
+            last_stderr = stderr
 
             if success:
                 logger.info(f"✓ Successfully fell back to {latest_image}")
-                return latest_image, True, True
+                return latest_image, True, True, "none"
 
             logger.debug(f"Fallback to {latest_image} failed: {stderr}")
 
-        # All strategies failed
+        # All strategies failed - classify the error type from last attempt
         logger.error(f"All fallback strategies failed for {original_image}")
-        return original_image, False, False
+        error_type = self.classify_error_type(last_stderr)
+        return original_image, False, False, error_type
 
     def ensure_chainguard_auth(self) -> bool:
         """
@@ -519,7 +656,7 @@ class DockerClient:
             result = subprocess.run(
                 ["chainctl", "version"],
                 capture_output=True,
-                timeout=5
+                timeout=VERSION_CHECK_TIMEOUT
             )
 
             if result.returncode != 0:
@@ -531,7 +668,7 @@ class DockerClient:
             token_result = subprocess.run(
                 ["chainctl", "auth", "token"],
                 capture_output=True,
-                timeout=10
+                timeout=GITHUB_CLI_TIMEOUT
             )
 
             if token_result.returncode == 0:
@@ -543,7 +680,7 @@ class DockerClient:
             login_result = subprocess.run(
                 ["chainctl", "auth", "login"],
                 capture_output=True,
-                timeout=60
+                timeout=CLI_SUBPROCESS_TIMEOUT
             )
 
             if login_result.returncode == 0:

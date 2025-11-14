@@ -109,6 +109,7 @@ gauge/
 │   │   ├── fips_calculator.py      # FIPS cost calculations
 │   │   ├── formatting.py           # Number, date, currency formatting
 │   │   ├── image_classifier.py     # Image tier classification
+│   │   ├── image_verification.py   # Centralized Chainguard image verification
 │   │   ├── logging_helpers.py      # Consistent logging utilities
 │   │   ├── markdown_utils.py       # Markdown loading and conversion
 │   │   ├── metrics_calculator.py   # CVE reduction metrics
@@ -117,7 +118,7 @@ gauge/
 │   │   ├── validation.py           # Input validation
 │   │   └── vulnerability_utils.py  # Vulnerability aggregation
 │   ├── cli.py                       # Command-line interface entry point
-│   └── constants.py                 # Centralized configuration
+│   └── constants.py                 # Centralized configuration (timeouts, defaults)
 ├── tests/                            # Unit and integration tests
 │   ├── conftest.py                  # Shared pytest fixtures
 │   ├── test_*.py                    # Test modules (188 tests)
@@ -290,6 +291,12 @@ gauge/
 - Image pulling and inspection with timeout handling
 - Platform handling
 - Recoverable error detection for retry queue
+
+**`image_verification.py`** - Chainguard image verification
+- Centralized verification service
+- Two-tier verification (GitHub API → Docker fallback)
+- Used by image matching tiers 3 and 4
+- Eliminates duplicate verification code
 
 **`chps_utils.py`** - Container hardening
 - Containerized CHPS execution
@@ -528,6 +535,8 @@ Recent refactoring examples:
 - Consolidated `format_currency()` and `format_number()` into `utils/formatting.py`
 - Extracted markdown loading into `utils/markdown_utils.py`
 - Created logging helpers in `utils/logging_helpers.py`
+- Extracted duplicate image verification into `utils/image_verification.py` (eliminated ~60 lines)
+- Standardized timeout constants in `constants.py` (10+ hardcoded values → centralized constants)
 
 ## Pull Request Process
 
