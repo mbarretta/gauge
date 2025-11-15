@@ -271,6 +271,9 @@ def read_input_file(file_path: Path) -> list[str]:
 
                 for row in reader:
                     if row and row[0].strip():
+                        # Skip comment lines (lines starting with #)
+                        if row[0].strip().startswith('#'):
+                            continue
                         images.append(row[0].strip())
             else:
                 # Plain text file (or single-column CSV without commas)
