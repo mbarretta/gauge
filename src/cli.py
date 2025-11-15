@@ -378,6 +378,9 @@ def _detect_csv_format(csv_path: Path) -> bool:
         reader = csv.reader(f)
         for row in reader:
             if row and any(cell.strip() for cell in row):
+                # Skip comment lines
+                if row[0].strip().startswith('#'):
+                    continue
                 # Skip header
                 if any(header in row[0].lower() for header in ["chainguard", "customer", "image", "alternative"]):
                     continue
@@ -412,6 +415,10 @@ def _parse_two_column_csv(csv_path: Path) -> list[ImagePair]:
         for line_num, row in enumerate(reader, 1):
             # Skip empty lines
             if not row or not any(cell.strip() for cell in row):
+                continue
+
+            # Skip comment lines (lines starting with #)
+            if row[0].strip().startswith('#'):
                 continue
 
             # Skip header if it looks like a header
@@ -484,6 +491,10 @@ def _parse_single_column_csv(csv_path: Path) -> list[str]:
         for line_num, row in enumerate(reader, 1):
             # Skip empty lines
             if not row or not any(cell.strip() for cell in row):
+                continue
+
+            # Skip comment lines (lines starting with #)
+            if row[0].strip().startswith('#'):
                 continue
 
             # Skip header if it looks like a header
