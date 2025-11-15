@@ -608,7 +608,7 @@ def _auto_match_images(
     # Initialize DFC contributor if requested
     dfc_contributor = None
     if generate_dfc_pr:
-        dfc_contributor = DFCContributor(output_dir=Path.cwd())
+        dfc_contributor = DFCContributor(output_dir=Path("output"))
         logger.info("DFC contribution generation enabled")
 
     # Initialize manual mapping populator (enabled by default)
