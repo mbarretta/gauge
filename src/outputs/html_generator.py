@@ -15,7 +15,7 @@ from typing import Optional
 import markdown
 
 from constants import CHAINGUARD_LOGO_PATH, DEFAULT_PLATFORM, GRADE_TO_CSS_CLASS
-from core.models import ScanResult, ImageAnalysis
+from core.models import ImageAnalysis, ScanResult
 from utils.formatting import format_number
 from utils.markdown_utils import load_and_convert_markdown
 from utils.metrics_calculator import MetricsCalculator
@@ -169,7 +169,6 @@ class HTMLGenerator:
     def _calculate_metrics(self, results: list[ScanResult]) -> dict:
         """Calculate CVE reduction metrics using MetricsCalculator."""
         return MetricsCalculator.calculate_metrics(results)
-
 
     def _build_html_template(
         self,
@@ -537,7 +536,7 @@ class HTMLGenerator:
                     comp_grade = "F"
                 grade_class = self._get_grade_badge_class(comp_grade)
                 components.append(
-                    f'<div style="width: 250px; display: flex; justify-content: space-between; align-items: center;">'
+                    f'<div style="display: flex; justify-content: space-between; align-items: center;">'
                     f"<span>{component_labels[component]}:</span>"
                     f'<span class="vuln-badge {grade_class}">{comp_grade}</span>'
                     f"</div>"
@@ -548,7 +547,7 @@ class HTMLGenerator:
         # Overall uses chps-overall-badge (not vuln-badge)
         overall_classes = f"chps-overall-badge {overall_grade_class}"
         overall = (
-            f'<div style="width: 250px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">'
+            f'<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px;">'
             f"<strong>Overall:</strong>"
             f'<span class="{overall_classes}" style="font-size: 1.2em; padding: 4px 6px;">{chps_score.grade}</span>'
             f"</div>"

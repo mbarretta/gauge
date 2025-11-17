@@ -2,6 +2,14 @@
 
 from setuptools import setup, find_packages
 from pathlib import Path
+import re
+
+# Read version from src/__init__.py (single source of truth)
+init_file = Path(__file__).parent / "src" / "__init__.py"
+version_match = re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', init_file.read_text())
+if not version_match:
+    raise RuntimeError("Unable to find version string in src/__init__.py")
+version = version_match.group(1)
 
 # Read README
 readme_file = Path(__file__).parent / "README.md"
@@ -9,7 +17,7 @@ long_description = readme_file.read_text() if readme_file.exists() else ""
 
 setup(
     name="gauge",
-    version="2.0.0",
+    version=version,
     description="Gauge your container security posture - Unified vulnerability assessment tool",
     long_description=long_description,
     long_description_content_type="text/markdown",
