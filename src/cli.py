@@ -104,8 +104,8 @@ Examples:
   # Scan with single-column CSV (auto-matches Chainguard images)
   gauge --input alternative-images.csv
 
-  # Scan with single-column CSV and upstream discovery
-  gauge --input alternative-images.csv --find-upstream
+  # Scan with single-column CSV (upstream discovery enabled by default)
+  gauge --input alternative-images.csv
 
   # Scan with single-column CSV, disable LLM matching
   gauge --input alternative-images.csv --disable-llm-matching
@@ -131,8 +131,8 @@ Examples:
   # Match with LLM-powered Tier 4 fuzzy matching (enabled by default)
   gauge match --input images.txt --llm-model claude-sonnet-4-5
 
-  # Match with upstream discovery for private/internal images
-  gauge match --input images.txt --find-upstream
+  # Match with upstream discovery for private/internal images (enabled by default)
+  gauge match --input images.txt
 
   # Generate DFC contribution files for discovered mappings
   gauge match --input images.txt --generate-dfc-pr
@@ -280,9 +280,9 @@ For more help on the match subcommand:
         help="Local DFC mappings file (for offline/air-gapped environments)",
     )
     matching_opts.add_argument(
-        "--find-upstream",
+        "--skip-public-repo-search",
         action="store_true",
-        help="Enable upstream image discovery for private/internal images",
+        help="Skip upstream image discovery for private/internal images (enabled by default)",
     )
     matching_opts.add_argument(
         "--upstream-confidence",
@@ -1367,7 +1367,7 @@ def main():
         min_confidence=args.min_confidence,
         dfc_mappings_file=args.dfc_mappings_file,
         cache_dir=args.cache_dir,
-        find_upstream=args.find_upstream,
+        find_upstream=not args.skip_public_repo_search,
         upstream_confidence=args.upstream_confidence,
         upstream_mappings_file=args.upstream_mappings_file,
         enable_llm_matching=not args.disable_llm_matching,
@@ -1482,8 +1482,8 @@ Examples:
   # Generate DFC contribution files (outputs to output/ directory)
   gauge match --input images.txt --generate-dfc-pr
 
-  # Enable upstream discovery for private/internal images
-  gauge match --input images.txt --find-upstream
+  # Skip upstream discovery (faster for public images)
+  gauge match --input images.txt --skip-public-repo-search
 
   # Match with interactive prompts for low-confidence matches
   gauge match --input images.txt --interactive
@@ -1566,9 +1566,9 @@ Output Files:
     )
 
     parser.add_argument(
-        "--find-upstream",
+        "--skip-public-repo-search",
         action="store_true",
-        help="Enable upstream image discovery for private/internal images",
+        help="Skip upstream image discovery for private/internal images (enabled by default)",
     )
 
     parser.add_argument(
@@ -1674,7 +1674,7 @@ Output Files:
             interactive=args.interactive,
             dfc_mappings_file=args.dfc_mappings_file,
             cache_dir=args.cache_dir,
-            find_upstream=args.find_upstream,
+            find_upstream=not args.skip_public_repo_search,
             upstream_confidence=args.upstream_confidence,
             upstream_mappings_file=args.upstream_mappings_file,
             enable_llm_matching=not args.disable_llm_matching,

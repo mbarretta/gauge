@@ -547,7 +547,7 @@ class DockerClient:
 
         Strategy order:
         1. Try exact image as specified
-        2. If upstream image provided (e.g., from --find-upstream), try that
+        2. If upstream image provided (from upstream discovery), try that
         3. If Docker Hub image and failed, try mirror.gcr.io fallback
         4. If that fails, try with :latest tag as last resort
 

@@ -1,8 +1,8 @@
 # Upstream Image Mappings
 #
 # Manual overrides for mapping private/internal images to their public upstream equivalents.
-# This file is used by the --find-upstream feature to discover public versions of
-# private or internal container images before matching them to Chainguard equivalents.
+# This file is used by the upstream discovery feature (enabled by default) to discover
+# public versions of private or internal container images before matching to Chainguard.
 #
 # Format:
 #   "private-image:tag": "public-upstream-image:tag"
@@ -31,11 +31,11 @@
 # How to use:
 #
 # 1. Add your custom mappings above
-# 2. Run gauge match with --find-upstream and --upstream-mappings-file flags:
+# 2. Run gauge match with --upstream-mappings-file flag:
 #
 #    gauge match --input images.txt \
 #                --output matched.csv \
-#                --find-upstream \
 #                --upstream-mappings-file config/upstream_mappings.yaml
 #
 # 3. Manual mappings have 100% confidence and take precedence over automatic discovery
+# 4. To disable upstream discovery entirely, use --skip-public-repo-search

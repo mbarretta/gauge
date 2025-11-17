@@ -295,8 +295,8 @@ Gauge will show the matched pairs and warn about any unmatched images. Only imag
 You can control the matching behavior with CLI options:
 
 ```bash
-# Scan with upstream discovery for private images
-gauge --input alternative-images.csv --find-upstream
+# Upstream discovery enabled by default (use --skip-public-repo-search to disable)
+gauge --input alternative-images.csv
 
 # Scan with LLM matching disabled (Tiers 1-3 only)
 gauge --input alternative-images.csv --disable-llm-matching
@@ -334,28 +334,34 @@ The `match` command outputs:
 
 ### Upstream Image Discovery (For Private/Internal Images)
 
-If your images are hosted in private registries or have internal names, Gauge can automatically find their public upstream equivalents before matching to Chainguard:
+**Enabled by default**, Gauge automatically finds public upstream equivalents for images hosted in private registries or with internal names before matching to Chainguard:
 
 ```bash
-# Enable upstream discovery
-gauge match --input images.txt -o matched.csv --find-upstream
+# Upstream discovery is enabled by default - no flag needed
+gauge match --input images.txt -o matched.csv
+
+# Skip upstream discovery if not needed (faster for public images)
+gauge match --input images.txt -o matched.csv --skip-public-repo-search
 
 # With custom confidence thresholds
-gauge match --input images.txt -o matched.csv --find-upstream --upstream-confidence 0.8
+gauge match --input images.txt -o matched.csv --upstream-confidence 0.8
 
 # Use manual upstream mappings for custom overrides
-gauge match --input images.txt -o matched.csv --find-upstream --upstream-mappings-file config/upstream_mappings.yaml
+gauge match --input images.txt -o matched.csv --upstream-mappings-file config/upstream_mappings.yaml
 ```
 
 **How it works:**
 1. Input: `mycompany.io/python-app:v1` or `internal-nginx:prod`
-2. Upstream Discovery (4 strategies, confidence-scored):
+2. **First Priority**: Check DFC and Manual Chainguard mappings with original image name
+   - If explicit mapping exists (DFC or Manual), use it immediately
+   - This ensures manual overrides take precedence over upstream discovery
+3. **Fallback**: If no explicit mapping found, try Upstream Discovery (4 strategies):
    - **Manual Mappings** (100%) - Custom overrides in `config/upstream_mappings.yaml`
    - **Registry Strip** (90%) - Removes private registry prefix: `mycompany.io/python:3.12` → `python:3.12`
    - **Common Registries** (80%) - Checks docker.io, quay.io, ghcr.io
    - **Base Extraction** (70%) - Extracts base image: `internal-python-app` → `python:latest`
-3. Chainguard Matching: Found upstream image → Chainguard equivalent
-4. Output: Full audit trail in `matched.csv` showing both upstream and Chainguard matches
+4. **Chainguard Matching**: Try all 4 tiers with upstream image (or original if no upstream found)
+5. Output: Full audit trail in `matched.csv` showing both upstream and Chainguard matches
 
 **Output format with upstream discovery:**
 ```csv
