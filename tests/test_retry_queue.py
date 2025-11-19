@@ -29,6 +29,7 @@ class TestRetryQueue:
             image="python:3.12",
             platform="linux/amd64",
             error_message="rate limit exceeded",
+            error_type="rate_limit",
             context="alternative",
             pair_index=0
         )
@@ -41,6 +42,7 @@ class TestRetryQueue:
         assert failed_pulls[0].image == "python:3.12"
         assert failed_pulls[0].platform == "linux/amd64"
         assert failed_pulls[0].error_message == "rate limit exceeded"
+        assert failed_pulls[0].error_type == "rate_limit"
         assert failed_pulls[0].context == "alternative"
         assert failed_pulls[0].pair_index == 0
 
@@ -52,6 +54,7 @@ class TestRetryQueue:
             image="python:3.12",
             platform="linux/amd64",
             error_message="not found",
+            error_type="not_found",
             context="alternative",
             pair_index=0
         )
@@ -59,6 +62,7 @@ class TestRetryQueue:
             image="node:20",
             platform="linux/amd64",
             error_message="timeout",
+            error_type="timeout",
             context="chainguard",
             pair_index=1
         )
@@ -73,8 +77,8 @@ class TestRetryQueue:
     def test_clear_queue(self):
         """Test clearing the queue."""
         queue = RetryQueue()
-        queue.add("python:3.12", "linux/amd64", "error", "alternative")
-        queue.add("node:20", "linux/amd64", "error", "chainguard")
+        queue.add("python:3.12", "linux/amd64", "error", "unknown", "alternative")
+        queue.add("node:20", "linux/amd64", "error", "unknown", "chainguard")
 
         assert queue.size() == 2
 
@@ -86,7 +90,7 @@ class TestRetryQueue:
     def test_get_all_returns_copy(self):
         """Test that get_all returns a copy, not the original list."""
         queue = RetryQueue()
-        queue.add("python:3.12", "linux/amd64", "error", "alternative")
+        queue.add("python:3.12", "linux/amd64", "error", "unknown", "alternative")
 
         failed_pulls_1 = queue.get_all()
         failed_pulls_2 = queue.get_all()
@@ -135,7 +139,8 @@ class TestScannerRetryIntegration:
         mock_docker_client.ensure_fresh_image.return_value = (
             "python:3.12",
             False,
-            False  # pull_successful = False
+            False,  # pull_successful = False
+            "not_found"
         )
 
         # Attempt to scan image with context
@@ -155,7 +160,8 @@ class TestScannerRetryIntegration:
         mock_docker_client.ensure_fresh_image.return_value = (
             "python:3.12",
             False,
-            True  # pull_successful = True
+            True,  # pull_successful = True
+            "none"
         )
         mock_docker_client.get_image_digest.return_value = "sha256:abc123"
         mock_docker_client.get_image_size_mb.return_value = 100.0
@@ -189,15 +195,16 @@ class TestScannerRetryIntegration:
 
         # Mock first scan to fail
         mock_docker_client.ensure_fresh_image.side_effect = [
-            ("python:3.12", False, False),  # First call fails
-            ("cgr.dev/chainguard/python:latest", False, True),  # Second call succeeds
+            ("python:3.12", False, False, "not_found"),  # First call fails
+            ("cgr.dev/chainguard/python:latest", False, True, "none"),  # Second call succeeds
         ]
 
         # Mock subsequent retry to succeed
         mock_docker_client.pull_image_with_fallback.return_value = (
             "python:3.12",
             False,
-            True
+            True,
+            "none"
         )
 
         mock_docker_client.get_image_digest.return_value = "sha256:abc123"
@@ -227,7 +234,8 @@ class TestScannerRetryIntegration:
         mock_docker_client.ensure_fresh_image.return_value = (
             "python:3.12",
             False,
-            False  # pull_successful = False
+            False,  # pull_successful = False
+            "not_found"
         )
 
         # Attempt to scan image WITHOUT context

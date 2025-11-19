@@ -3,53 +3,63 @@
 import pytest
 from pathlib import Path
 
-from cli import parse_args, parse_output_types
+from cli import parse_args
+from core.orchestrator import GaugeOrchestrator
 
 
 class TestOutputTypeParsing:
-    """Tests for parse_output_types function."""
+    """Tests for parse_output_types method on GaugeOrchestrator."""
+
+    def setup_method(self):
+        """Set up a dummy orchestrator for testing."""
+        # Create a mock args object
+        class MockArgs:
+            def __init__(self):
+                pass
+        self.args = MockArgs()
+        self.orchestrator = GaugeOrchestrator(self.args)
 
     def test_default_none_returns_default_types(self):
         """Test that None (default) returns vuln_summary and cost_analysis."""
-        result = parse_output_types(None)
+        result = self.orchestrator.parse_output_types(None)
         assert result == {'cost_analysis', 'vuln_summary'}
 
     def test_single_type(self):
         """Test parsing a single output type."""
-        result = parse_output_types('pricing')
+        result = self.orchestrator.parse_output_types('pricing')
         assert result == {'pricing'}
 
     def test_comma_delimited_two_types(self):
         """Test parsing comma-delimited list of two types."""
-        result = parse_output_types('cost_analysis,pricing')
+        result = self.orchestrator.parse_output_types('cost_analysis,pricing')
         assert result == {'cost_analysis', 'pricing'}
 
     def test_comma_delimited_all_three(self):
         """Test parsing comma-delimited list of all three types."""
-        result = parse_output_types('cost_analysis,vuln_summary,pricing')
+        result = self.orchestrator.parse_output_types('cost_analysis,vuln_summary,pricing')
         assert result == {'cost_analysis', 'vuln_summary', 'pricing'}
 
     def test_with_spaces_strips_whitespace(self):
         """Test that spaces around commas are handled correctly."""
-        result = parse_output_types('cost_analysis, pricing')
+        result = self.orchestrator.parse_output_types('cost_analysis, pricing')
         assert result == {'cost_analysis', 'pricing'}
 
     def test_invalid_type_raises_value_error(self):
         """Test that invalid output type raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
-            parse_output_types('invalid_type')
+            self.orchestrator.parse_output_types('invalid_type')
         assert 'Invalid output type(s): invalid_type' in str(exc_info.value)
         assert 'Valid types:' in str(exc_info.value)
 
     def test_mixed_valid_and_invalid_raises_value_error(self):
         """Test that mix of valid and invalid types raises ValueError."""
         with pytest.raises(ValueError) as exc_info:
-            parse_output_types('pricing,invalid,cost_analysis')
+            self.orchestrator.parse_output_types('pricing,invalid,cost_analysis')
         assert 'Invalid output type(s): invalid' in str(exc_info.value)
 
     def test_duplicate_types_deduped(self):
         """Test that duplicate types are deduplicated."""
-        result = parse_output_types('pricing,pricing,cost_analysis')
+        result = self.orchestrator.parse_output_types('pricing,pricing,cost_analysis')
         assert result == {'pricing', 'cost_analysis'}
 
 
@@ -107,27 +117,40 @@ class TestCLIArguments:
 class TestCLIIntegration:
     """Integration tests for CLI argument parsing with output type parsing."""
 
+    def setup_method(self):
+        """Set up a dummy orchestrator for testing."""
+        # Create a mock args object
+        class MockArgs:
+            def __init__(self):
+                pass
+        self.args = MockArgs()
+        self.orchestrator = GaugeOrchestrator(self.args)
+
     def test_default_workflow(self):
         """Test default workflow: no --output flag generates vuln_summary and cost_analysis."""
         args = parse_args(['-i', 'test.csv'])
-        output_types = parse_output_types(args.output)
+        self.orchestrator.args = args
+        output_types = self.orchestrator.parse_output_types(args.output)
         assert output_types == {'cost_analysis', 'vuln_summary'}
 
     def test_single_pricing_workflow(self):
         """Test workflow for generating only pricing quote."""
         args = parse_args(['-i', 'test.csv', '--output', 'pricing'])
-        output_types = parse_output_types(args.output)
+        self.orchestrator.args = args
+        output_types = self.orchestrator.parse_output_types(args.output)
         assert output_types == {'pricing'}
 
     def test_dual_output_workflow(self):
         """Test workflow for generating two output types."""
         args = parse_args(['-i', 'test.csv', '--output', 'cost_analysis,pricing'])
-        output_types = parse_output_types(args.output)
+        self.orchestrator.args = args
+        output_types = self.orchestrator.parse_output_types(args.output)
         assert output_types == {'cost_analysis', 'pricing'}
 
     def test_invalid_output_raises_on_parsing(self):
         """Test that invalid output type is caught during parsing phase."""
         args = parse_args(['-i', 'test.csv', '--output', 'invalid'])
+        self.orchestrator.args = args
         with pytest.raises(ValueError) as exc_info:
-            parse_output_types(args.output)
+            self.orchestrator.parse_output_types(args.output)
         assert 'Invalid output type(s): invalid' in str(exc_info.value)

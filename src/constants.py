@@ -90,14 +90,14 @@ CHAINGUARD_PUBLIC_REGISTRY = "cgr.dev/chainguard"
 # Timeouts (in seconds)
 # ============================================================================
 
-SYFT_TIMEOUT = 300
-"""Timeout for Syft SBOM generation (5 minutes)."""
+SYFT_TIMEOUT = 600
+"""Timeout for Syft SBOM generation (10 minutes)."""
 
-GRYPE_TIMEOUT = 300
-"""Timeout for Grype vulnerability scanning (5 minutes)."""
+GRYPE_TIMEOUT = 600
+"""Timeout for Grype vulnerability scanning (10 minutes)."""
 
-CHPS_TIMEOUT = 120
-"""Timeout for CHPS scoring (2 minutes)."""
+CHPS_TIMEOUT = 600
+"""Timeout for CHPS scoring (10 minutes)."""
 
 VERSION_CHECK_TIMEOUT = 5
 """Timeout for tool version checks (5 seconds)."""
@@ -108,11 +108,8 @@ API_REQUEST_TIMEOUT = 30
 KEV_CATALOG_TIMEOUT = 30
 """Timeout for KEV catalog download (30 seconds)."""
 
-DOCKER_PULL_TIMEOUT = 300
-"""Timeout for Docker image pull operations (5 minutes)."""
-
-DOCKER_MANIFEST_TIMEOUT = 120
-"""Timeout for Docker manifest inspection (2 minutes)."""
+DOCKER_PULL_TIMEOUT = 600
+"""Timeout for Docker image pull operations (10 minutes)."""
 
 DOCKER_QUICK_CHECK_TIMEOUT = 5
 """Timeout for quick Docker status checks (5 seconds)."""

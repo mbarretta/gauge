@@ -24,13 +24,14 @@ class TestDockerClientFallback:
             # Simulate successful pull
             mock_run.return_value = Mock(returncode=0, stderr="", stdout="")
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "python:3.12"
             assert used_fallback is False
             assert pull_successful is True
+            assert error_type == "none"
             assert mock_run.call_count == 1
 
     def test_pull_image_with_fallback_mirror_gcr_for_dockerhub(self, docker_client):
@@ -43,13 +44,14 @@ class TestDockerClientFallback:
                 Mock(returncode=0, stderr="", stdout=""),  # mirror.gcr.io success
             ]
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "mirror.gcr.io/library/python:3.12"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"
             assert mock_run.call_count == 2
 
     def test_pull_image_with_fallback_latest_tag(self, docker_client):
@@ -63,13 +65,14 @@ class TestDockerClientFallback:
                 Mock(returncode=0, stderr="", stdout=""),  # :latest success
             ]
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "cgr.dev/chainguard/python:3.12", "linux/amd64"
             )
 
             assert image == "cgr.dev/chainguard/python:latest"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"
 
     def test_pull_image_with_fallback_all_fail(self, docker_client):
         """Test when all fallback strategies fail."""
@@ -77,13 +80,14 @@ class TestDockerClientFallback:
             # All attempts fail
             mock_run.return_value = Mock(returncode=1, stderr="not found", stdout="")
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "python:3.12"  # Returns original image
             assert used_fallback is False
             assert pull_successful is False
+            assert error_type == "not_found"
 
     def test_pull_image_with_fallback_rate_limit(self, docker_client):
         """Test fallback triggers on rate limit error."""
@@ -95,26 +99,28 @@ class TestDockerClientFallback:
                 Mock(returncode=0, stderr="", stdout=""),  # mirror.gcr.io success
             ]
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "ubuntu:20.04", "linux/amd64"
             )
 
             assert image == "mirror.gcr.io/library/ubuntu:20.04"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"
 
     def test_pull_image_with_fallback_timeout(self, docker_client):
         """Test timeout handling in pull_image_with_fallback."""
         with patch('subprocess.run') as mock_run:
             mock_run.side_effect = subprocess.TimeoutExpired("docker", 300)
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "python:3.12"
             assert used_fallback is False
             assert pull_successful is False
+            assert error_type == "timeout"
 
     def test_has_registry_prefix(self, docker_client):
         """Test registry prefix detection."""
@@ -161,7 +167,7 @@ class TestDockerClientFallback:
                 Mock(returncode=0, stderr="", stdout=""),  # upstream success
             ]
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "docker.artifactory.mars.pcf-maximus.com/bitnami/mongodb:7.0.2-debian-11-r7",
                 "linux/amd64",
                 upstream_image="bitnami/mongodb:7.0.2-debian-11-r7"
@@ -170,6 +176,7 @@ class TestDockerClientFallback:
             assert image == "bitnami/mongodb:7.0.2-debian-11-r7"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"
             assert mock_run.call_count == 2
 
     def test_pull_image_with_fallback_connection_refused_with_upstream(self, docker_client):
@@ -182,7 +189,7 @@ class TestDockerClientFallback:
                 Mock(returncode=0, stderr="", stdout=""),  # upstream success
             ]
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "private.registry.com/nginx:latest",
                 "linux/amd64",
                 upstream_image="nginx:latest"
@@ -191,6 +198,7 @@ class TestDockerClientFallback:
             assert image == "nginx:latest"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"
             assert mock_run.call_count == 2
 
     def test_pull_image_with_fallback_no_auth_with_upstream(self, docker_client):
@@ -203,7 +211,7 @@ class TestDockerClientFallback:
                 Mock(returncode=0, stderr="", stdout=""),  # upstream success
             ]
 
-            image, used_fallback, pull_successful = docker_client.pull_image_with_fallback(
+            image, used_fallback, pull_successful, error_type = docker_client.pull_image_with_fallback(
                 "602401143452.dkr.ecr.us-west-2.amazonaws.com/eks/coredns:v1.8.7-eksbuild.1",
                 "linux/amd64",
                 upstream_image="eks/coredns:v1.8.7-eksbuild.1"
@@ -212,6 +220,7 @@ class TestDockerClientFallback:
             assert image == "eks/coredns:v1.8.7-eksbuild.1"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"
             assert mock_run.call_count == 2
 
 
@@ -330,37 +339,40 @@ class TestEnsureFreshImage:
         with patch.object(docker_client, 'get_remote_digest', return_value="sha256:abc123"), \
              patch.object(docker_client, 'get_image_digest', return_value="sha256:abc123"):
 
-            image, used_fallback, pull_successful = docker_client.ensure_fresh_image(
+            image, used_fallback, pull_successful, error_type = docker_client.ensure_fresh_image(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "python:3.12"
             assert used_fallback is False
             assert pull_successful is True
+            assert error_type == "none"
 
     def test_ensure_fresh_image_needs_update(self, docker_client):
         """Test when local image needs updating."""
         with patch.object(docker_client, 'get_remote_digest', return_value="sha256:new123"), \
              patch.object(docker_client, 'get_image_digest', return_value="sha256:old123"), \
-             patch.object(docker_client, 'pull_image_with_fallback', return_value=("python:3.12", False, True)):
+             patch.object(docker_client, 'pull_image_with_fallback', return_value=("python:3.12", False, True, "none")):
 
-            image, used_fallback, pull_successful = docker_client.ensure_fresh_image(
+            image, used_fallback, pull_successful, error_type = docker_client.ensure_fresh_image(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "python:3.12"
             assert pull_successful is True
+            assert error_type == "none"
 
     def test_ensure_fresh_image_with_fallback(self, docker_client):
         """Test ensure_fresh_image when fallback is used."""
         with patch.object(docker_client, 'get_remote_digest', return_value=None), \
              patch.object(docker_client, 'pull_image_with_fallback',
-                         return_value=("mirror.gcr.io/library/python:3.12", True, True)):
+                         return_value=("mirror.gcr.io/library/python:3.12", True, True, "none")):
 
-            image, used_fallback, pull_successful = docker_client.ensure_fresh_image(
+            image, used_fallback, pull_successful, error_type = docker_client.ensure_fresh_image(
                 "python:3.12", "linux/amd64"
             )
 
             assert image == "mirror.gcr.io/library/python:3.12"
             assert used_fallback is True
             assert pull_successful is True
+            assert error_type == "none"

@@ -24,6 +24,7 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+.bak
 
 # Virtual environments
 venv/
@@ -83,3 +84,4 @@ chainguard-token
 # Distribution / packaging
 *.tar.gz
 *.whl
+config/image_mappings.yaml

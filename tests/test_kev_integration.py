@@ -75,7 +75,7 @@ class TestScannerWithKEV:
     def mock_docker_client(self):
         """Create a mock Docker client."""
         client = Mock(spec=DockerClient)
-        client.ensure_fresh_image.return_value = ("test:latest", False, True)
+        client.ensure_fresh_image.return_value = ("test:latest", False, True, "none")
         client.get_image_digest.return_value = "sha256:abc123"
         client.get_image_size_mb.return_value = 100.0
         return client

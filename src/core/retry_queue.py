@@ -25,6 +25,9 @@ class FailedImagePull:
     error_message: str
     """Error message from the failed pull"""
 
+    error_type: str
+    """Type of error ('auth', 'timeout', 'rate_limit', 'not_found', 'unknown')"""
+
     context: str
     """Context about where this image was being used (e.g., 'alternative' or 'chainguard')"""
 
@@ -49,6 +52,7 @@ class RetryQueue:
         image: str,
         platform: Optional[str],
         error_message: str,
+        error_type: str,
         context: str,
         pair_index: Optional[int] = None
     ) -> None:
@@ -59,6 +63,7 @@ class RetryQueue:
             image: Image reference that failed to pull
             platform: Platform specification used
             error_message: Error message from the failure
+            error_type: Type of error from the failure
             context: Context string (e.g., 'alternative', 'chainguard')
             pair_index: Index of the image pair (if applicable)
         """
@@ -66,6 +71,7 @@ class RetryQueue:
             image=image,
             platform=platform,
             error_message=error_message,
+            error_type=error_type,
             context=context,
             pair_index=pair_index
         )

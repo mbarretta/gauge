@@ -732,18 +732,7 @@ class ImageMatcher:
         Returns:
             MatchResult with matched image and metadata
         """
-        # Step 1: Try high-confidence tiers (DFC, Manual) with ORIGINAL image first
-        # These are explicit mappings that should take precedence over upstream discovery
-        for tier_matcher in [self.tier1, self.tier2]:
-            if tier_matcher is None:
-                continue
-
-            result = tier_matcher.match(alternative_image)
-            if result:
-                # Found explicit mapping for original image
-                return result
-
-        # Step 2: Try upstream discovery (if enabled)
+        # Step 1: Try upstream discovery (if enabled)
         upstream_result = None
         image_to_match = alternative_image
 
@@ -756,7 +745,7 @@ class ImageMatcher:
                 )
                 image_to_match = upstream_result.upstream_image
 
-        # Step 3: Try all tiers with the image to match (upstream if found, original otherwise)
+        # Step 2: Try all tiers with the image to match (upstream if found, original otherwise)
         for tier_matcher in [self.tier1, self.tier2, self.tier3, self.tier4]:
             if tier_matcher is None:
                 continue
@@ -764,9 +753,10 @@ class ImageMatcher:
             result = tier_matcher.match(image_to_match)
             if result:
                 # Add upstream information if available
-                result.upstream_image = upstream_result.upstream_image if upstream_result else None
-                result.upstream_confidence = upstream_result.confidence if upstream_result else None
-                result.upstream_method = upstream_result.method if upstream_result else None
+                if upstream_result:
+                    result.upstream_image = upstream_result.upstream_image
+                    result.upstream_confidence = upstream_result.confidence
+                    result.upstream_method = upstream_result.method
                 return result
 
         # No match found

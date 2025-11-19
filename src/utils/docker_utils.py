@@ -12,13 +12,11 @@ import subprocess
 from typing import Optional
 
 from constants import (
-    DEFAULT_PLATFORM,
-    VERSION_CHECK_TIMEOUT,
     API_REQUEST_TIMEOUT,
-    DOCKER_PULL_TIMEOUT,
-    DOCKER_MANIFEST_TIMEOUT,
-    DOCKER_QUICK_CHECK_TIMEOUT,
     CLI_SUBPROCESS_TIMEOUT,
+    DEFAULT_PLATFORM,
+    DOCKER_PULL_TIMEOUT,
+    VERSION_CHECK_TIMEOUT,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,7 +44,7 @@ class DockerClient:
                 result = subprocess.run(
                     [cmd, "--version"],
                     capture_output=True,
-                    timeout=VERSION_CHECK_TIMEOUT
+                    timeout=VERSION_CHECK_TIMEOUT,
                 )
                 if result.returncode == 0:
                     return cmd
@@ -70,7 +68,7 @@ class DockerClient:
                 [self.runtime, "inspect", "--format={{.Id}}", image],
                 capture_output=True,
                 text=True,
-                timeout=API_REQUEST_TIMEOUT
+                timeout=API_REQUEST_TIMEOUT,
             )
 
             if result.returncode == 0:
@@ -84,22 +82,23 @@ class DockerClient:
 
         return None
 
-    def get_remote_digest(self, image: str) -> Optional[str]:
+    def get_remote_digest(self, image: str, platform: str) -> Optional[str]:
         """
-        Get the digest of an image from the remote registry (linux/amd64 platform).
+        Get the digest of an image from the remote registry for a specific platform.
 
         Args:
             image: Image reference (registry/repo:tag)
+            platform: Platform string (e.g., "linux/amd64")
 
         Returns:
-            Remote image digest for linux/amd64 or None if unavailable
+            Remote image digest for the specified platform or None if unavailable
         """
         try:
             result = subprocess.run(
                 [self.runtime, "manifest", "inspect", image],
                 capture_output=True,
                 text=True,
-                timeout=API_REQUEST_TIMEOUT
+                timeout=API_REQUEST_TIMEOUT,
             )
 
             if result.returncode != 0:
@@ -109,15 +108,20 @@ class DockerClient:
 
             # Handle multi-arch manifests
             if "manifests" in manifest and isinstance(manifest["manifests"], list):
-                # Find linux/amd64 platform
+                # Parse target platform
+                target_os, target_arch = platform.split("/") if "/" in platform else (platform, None)
+
+                # Find platform-specific manifest
                 for m in manifest["manifests"]:
-                    platform = m.get("platform", {})
-                    if platform.get("os") == "linux" and platform.get("architecture") == "amd64":
+                    p = m.get("platform", {})
+                    if p.get("os") == target_os and p.get("architecture") == target_arch:
                         return m.get("digest")
 
-                # Fallback to first manifest if amd64 not found
+                # Fallback to first manifest if specific platform not found
                 if manifest["manifests"]:
-                    logger.debug(f"Could not find linux/amd64 manifest for {image}, using first available")
+                    logger.debug(
+                        f"Could not find {platform} manifest for {image}, using first available"
+                    )
                     return manifest["manifests"][0].get("digest")
 
             # Single-arch manifest
@@ -130,7 +134,12 @@ class DockerClient:
             logger.debug(f"Failed to get remote digest for {image}: {e}")
             return None
 
-    def ensure_fresh_image(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool, str]:
+    def ensure_fresh_image(
+        self,
+        image: str,
+        platform: Optional[str] = None,
+        upstream_image: Optional[str] = None,
+    ) -> tuple[str, bool, bool, str]:
         """
         Ensure local image is up-to-date with remote, with intelligent fallback strategies.
 
@@ -150,17 +159,23 @@ class DockerClient:
             # Default to linux/amd64 for consistency across environments
             platform = platform or DEFAULT_PLATFORM
 
-            remote_digest = self.get_remote_digest(image)
+            remote_digest = self.get_remote_digest(image, platform)
             if not remote_digest:
-                logger.debug(f"Could not get remote digest for {image}, attempting pull with fallback")
+                logger.debug(
+                    f"Could not get remote digest for {image}, attempting pull with fallback"
+                )
                 # Image might not exist, try pulling with fallback
-                return self.pull_image_with_fallback(image, platform, upstream_image=upstream_image)
+                return self.pull_image_with_fallback(
+                    image, platform, upstream_image=upstream_image
+                )
 
             local_digest = self.get_image_digest(image)
 
             if not local_digest or local_digest != remote_digest:
                 logger.info(f"Pulling fresh copy of {image} ({platform})")
-                return self.pull_image_with_fallback(image, platform, upstream_image=upstream_image)
+                return self.pull_image_with_fallback(
+                    image, platform, upstream_image=upstream_image
+                )
 
             logger.debug(f"Image {image} is up-to-date")
             return image, False, True, "none"
@@ -182,28 +197,29 @@ class DockerClient:
         Returns:
             Size in MB, rounded to nearest integer
         """
+
         def parse_size(size_str: str) -> float:
             """Parse human-readable size string to MB."""
             if not size_str:
                 return 0.0
-            
+
             # Parse human-readable size (e.g., "1.25GB", "234MB", "45.3kB")
             size_str = size_str.upper()
-            
+
             # Extract numeric value
             numeric_part = ""
             unit = ""
             for char in size_str:
-                if char.isdigit() or char == '.':
+                if char.isdigit() or char == ".":
                     numeric_part += char
                 elif char.isalpha():
                     unit += char
-            
+
             if not numeric_part:
                 return 0.0
-            
+
             value = float(numeric_part)
-            
+
             # Convert to MB
             if "GB" in unit:
                 return round(value * 1024)
@@ -213,17 +229,22 @@ class DockerClient:
                 return round(value / 1024)
             elif "TB" in unit:
                 return round(value * 1024 * 1024)
-            elif "B" in unit and "KB" not in unit and "MB" not in unit and "GB" not in unit:
+            elif (
+                "B" in unit
+                and "KB" not in unit
+                and "MB" not in unit
+                and "GB" not in unit
+            ):
                 # Just bytes
                 return round(value / (1024 * 1024))
             else:
                 # Unknown unit, assume MB
                 return round(value)
-        
+
         # Try multiple image name variations
         # Docker stores images with short names (e.g., "alpine") but we might query with full names
         image_variations = [image]
-        
+
         # Add short name variation for docker.io/library/* images
         if image.startswith("docker.io/library/"):
             short_name = image.replace("docker.io/library/", "")
@@ -232,7 +253,7 @@ class DockerClient:
             # For other docker.io images, try without the registry prefix
             short_name = image.replace("docker.io/", "")
             image_variations.append(short_name)
-        
+
         for img_name in image_variations:
             try:
                 # Use docker images command which reports actual image size
@@ -241,24 +262,24 @@ class DockerClient:
                     [self.runtime, "images", img_name, "--format", "{{.Size}}"],
                     capture_output=True,
                     text=True,
-                    timeout=API_REQUEST_TIMEOUT
+                    timeout=API_REQUEST_TIMEOUT,
                 )
 
                 if result.returncode == 0:
                     size_str = result.stdout.strip()
                     if size_str:
                         # Take first line in case multiple images match
-                        first_line = size_str.split('\n')[0].strip()
+                        first_line = size_str.split("\n")[0].strip()
                         if first_line:
                             size_mb = parse_size(first_line)
                             if size_mb > 0:
                                 logger.debug(f"Got size for {img_name}: {size_mb} MB")
                                 return size_mb
-                        
+
             except (subprocess.TimeoutExpired, ValueError) as e:
                 logger.debug(f"Failed to get size for {img_name}: {e}")
                 continue
-        
+
         # If all variations failed
         logger.debug(f"Could not get size for {image} (tried: {image_variations})")
         return 0.0
@@ -278,7 +299,7 @@ class DockerClient:
                 [self.runtime, "inspect", "--format={{.Created}}", image],
                 capture_output=True,
                 text=True,
-                timeout=API_REQUEST_TIMEOUT
+                timeout=API_REQUEST_TIMEOUT,
             )
 
             if result.returncode == 0:
@@ -308,10 +329,7 @@ class DockerClient:
             cmd = [self.runtime, "pull", "--platform", platform, image]
 
             result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=DOCKER_PULL_TIMEOUT
+                cmd, capture_output=True, text=True, timeout=DOCKER_PULL_TIMEOUT
             )
 
             return result.returncode == 0
@@ -334,7 +352,7 @@ class DockerClient:
             result = subprocess.run(
                 [self.runtime, "manifest", "inspect", image],
                 capture_output=True,
-                timeout=API_REQUEST_TIMEOUT
+                timeout=API_REQUEST_TIMEOUT,
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -373,12 +391,16 @@ class DockerClient:
         """
         # Only apply to Docker Hub images (no existing registry prefix)
         if self._has_registry_prefix(image):
-            logger.debug(f"Image {image} already has registry prefix, skipping mirror.gcr.io fallback")
+            logger.debug(
+                f"Image {image} already has registry prefix, skipping mirror.gcr.io fallback"
+            )
             return None
 
         # Skip digest-based images
         if "@sha256:" in image:
-            logger.debug(f"Image {image} is digest-based, skipping mirror.gcr.io fallback")
+            logger.debug(
+                f"Image {image} is digest-based, skipping mirror.gcr.io fallback"
+            )
             return None
 
         # Transform official images: ubuntu:20.04 -> mirror.gcr.io/library/ubuntu:20.04
@@ -409,13 +431,16 @@ class DockerClient:
                 [self.runtime, "pull", "--platform", platform, image],
                 capture_output=True,
                 text=True,
-                timeout=DOCKER_MANIFEST_TIMEOUT  # Increased from 60s to handle authenticated registries with concurrent load
+                timeout=DOCKER_PULL_TIMEOUT,
             )
 
             # Check if image already exists with this digest
             # Docker returns non-zero exit code with "cannot overwrite digest" when
             # trying to pull an image that's already present locally
-            if result.returncode != 0 and "cannot overwrite digest" in result.stderr.lower():
+            if (
+                result.returncode != 0
+                and "cannot overwrite digest" in result.stderr.lower()
+            ):
                 logger.debug(f"Image {image} already present locally (digest exists)")
                 return True, ""  # Treat as success
 
@@ -481,7 +506,7 @@ class DockerClient:
             "no basic auth credentials",
             "authentication failed",
             "not authorized",
-            "authorization failed"
+            "authorization failed",
         ]
 
         return any(msg in stderr_lower for msg in auth_errors)
@@ -505,10 +530,22 @@ class DockerClient:
         if self._is_auth_error(stderr):
             return "auth"
 
-        if any(msg in stderr_lower for msg in ["toomanyrequests", "rate limit", "too many requests"]):
+        if any(
+            msg in stderr_lower
+            for msg in ["toomanyrequests", "rate limit", "too many requests"]
+        ):
             return "rate_limit"
 
-        if any(msg in stderr_lower for msg in ["not found", "manifest unknown", "does not exist", "no such image", "404"]):
+        if any(
+            msg in stderr_lower
+            for msg in [
+                "not found",
+                "manifest unknown",
+                "does not exist",
+                "no such image",
+                "404",
+            ]
+        ):
             return "not_found"
 
         return "unknown"
@@ -521,12 +558,21 @@ class DockerClient:
 
         stderr_lower = stderr.lower()
 
-        not_found_errors = ["not found", "manifest unknown", "does not exist", "no such image", "404"]
+        not_found_errors = [
+            "not found",
+            "manifest unknown",
+            "does not exist",
+            "no such image",
+            "404",
+        ]
         rate_limit_errors = ["toomanyrequests", "rate limit", "too many requests"]
         # Removed "unauthorized" and "no basic auth credentials" from connection_errors
         connection_errors = ["no such host", "connection refused", "dial tcp"]
 
-        return any(msg in stderr_lower for msg in not_found_errors + rate_limit_errors + connection_errors)
+        return any(
+            msg in stderr_lower
+            for msg in not_found_errors + rate_limit_errors + connection_errors
+        )
 
     def _get_latest_fallback_image(self, image: str) -> str | None:
         """
@@ -541,7 +587,12 @@ class DockerClient:
         base_image = image.rsplit(":", 1)[0]
         return f"{base_image}:latest"
 
-    def pull_image_with_fallback(self, image: str, platform: Optional[str] = None, upstream_image: Optional[str] = None) -> tuple[str, bool, bool, str]:
+    def pull_image_with_fallback(
+        self,
+        image: str,
+        platform: Optional[str] = None,
+        upstream_image: Optional[str] = None,
+    ) -> tuple[str, bool, bool, str]:
         """
         Pull an image from registry with intelligent fallback strategies.
 
@@ -594,9 +645,13 @@ class DockerClient:
             return image, False, False, error_type
 
         if is_auth_error and upstream_image:
-            logger.warning(f"Authentication failed for {image}, trying upstream fallback")
+            logger.warning(
+                f"Authentication failed for {image}, trying upstream fallback"
+            )
         else:
-            logger.warning(f"Image {image} not found or rate limited, trying fallback strategies")
+            logger.warning(
+                f"Image {image} not found or rate limited, trying fallback strategies"
+            )
 
         # Strategy 2: Try upstream image if provided (e.g., docker.io equivalent for private registry)
         if upstream_image:
@@ -605,7 +660,9 @@ class DockerClient:
             last_stderr = stderr
 
             if success:
-                logger.info(f"✓ Upstream fallback successful: {original_image} → {upstream_image}")
+                logger.info(
+                    f"✓ Upstream fallback successful: {original_image} → {upstream_image}"
+                )
                 return upstream_image, True, True, "none"
 
             logger.debug(f"Upstream fallback failed: {stderr}")
@@ -656,19 +713,21 @@ class DockerClient:
             result = subprocess.run(
                 ["chainctl", "version"],
                 capture_output=True,
-                timeout=VERSION_CHECK_TIMEOUT
+                timeout=VERSION_CHECK_TIMEOUT,
             )
 
             if result.returncode != 0:
                 # chainctl not found - assume running in container with host Docker auth
-                logger.info("✓ Running in container mode, using host Docker authentication")
+                logger.info(
+                    "✓ Running in container mode, using host Docker authentication"
+                )
                 return True
 
             # chainctl available - check if authenticated
             token_result = subprocess.run(
                 ["chainctl", "auth", "token"],
                 capture_output=True,
-                timeout=GITHUB_CLI_TIMEOUT
+                timeout=GITHUB_CLI_TIMEOUT,
             )
 
             if token_result.returncode == 0:
@@ -680,7 +739,7 @@ class DockerClient:
             login_result = subprocess.run(
                 ["chainctl", "auth", "login"],
                 capture_output=True,
-                timeout=CLI_SUBPROCESS_TIMEOUT
+                timeout=CLI_SUBPROCESS_TIMEOUT,
             )
 
             if login_result.returncode == 0:

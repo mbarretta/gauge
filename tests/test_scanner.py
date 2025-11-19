@@ -27,7 +27,7 @@ class TestScannerErrorHandling:
     def mock_docker_client(self):
         """Create a mock Docker client."""
         client = Mock(spec=DockerClient)
-        client.ensure_fresh_image.return_value = ("test:latest", False, True)
+        client.ensure_fresh_image.return_value = ("test:latest", False, True, "none")
         client.get_image_digest.return_value = "sha256:abc123"
         client.get_image_size_mb.return_value = 100.0
         return client
@@ -103,7 +103,7 @@ class TestScannerErrorHandling:
     def test_scan_image_pull_failure(self, scanner, mock_docker_client):
         """Test handling of image pull failure."""
         # Mock pull failure
-        mock_docker_client.ensure_fresh_image.return_value = ("test:latest", False, False)
+        mock_docker_client.ensure_fresh_image.return_value = ("test:latest", False, False, "not_found")
 
         with pytest.raises(RuntimeError, match="Failed to pull image.*and all fallback strategies failed"):
             scanner.scan_image("nonexistent:image")
@@ -114,7 +114,8 @@ class TestScannerErrorHandling:
         mock_docker_client.ensure_fresh_image.return_value = (
             "mirror.gcr.io/library/python:3.12",
             True,  # used_fallback
-            True   # pull_successful
+            True,   # pull_successful
+            "none"
         )
 
         with patch('subprocess.run') as mock_run:
@@ -150,7 +151,7 @@ class TestSyftErrorMessages:
     def mock_docker_client(self):
         """Create a mock Docker client."""
         client = Mock(spec=DockerClient)
-        client.ensure_fresh_image.return_value = ("test:latest", False, True)
+        client.ensure_fresh_image.return_value = ("test:latest", False, True, "none")
         client.get_image_digest.return_value = "sha256:abc123"
         client.get_image_size_mb.return_value = 100.0
         return client
