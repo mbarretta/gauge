@@ -64,6 +64,21 @@ class VulnerabilityCount:
     low: int = 0
     negligible: int = 0
 
+    def get_total(self, include_negligible: bool = False) -> int:
+        """
+        Get total CVE count with optional negligible exclusion.
+
+        Args:
+            include_negligible: Whether to include negligible in total (default: False)
+
+        Returns:
+            Total CVE count
+        """
+        if include_negligible:
+            return self.total
+        else:
+            return self.total - self.negligible
+
     def to_list(self) -> list[int]:
         """Convert to ordered list for tabular output."""
         return [

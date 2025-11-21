@@ -54,6 +54,7 @@ class ImageComparisonWriter(BaseSectionWriter):
         alternative_analyses: list[ImageAnalysis],
         chainguard_analyses: list[ImageAnalysis],
         platform: str = DEFAULT_PLATFORM,
+        include_negligible: bool = False,
     ) -> tuple[dict, dict, int]:
         """
         Write image comparison section.
@@ -66,6 +67,8 @@ class ImageComparisonWriter(BaseSectionWriter):
         Returns:
             Tuple of (alternative_cells, chainguard_cells, final_row)
         """
+        self.include_negligible = include_negligible
+        
         # Platform info row
         self.worksheet.write(
             self.row,
@@ -85,18 +88,20 @@ class ImageComparisonWriter(BaseSectionWriter):
             "High",
             "Medium",
             "Low",
-            "Negligible/Unknown",
         ]
+        if include_negligible:
+            header.append("Negligible/Unknown")
+        
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_blue")
         )
         self.row += 1
 
         # Alternative images
-        alternative_cells = self._write_image_data(alternative_analyses, "body_white")
+        alternative_cells = self._write_image_data(alternative_analyses, "body_white", include_negligible)
 
         # Chainguard images
-        chainguard_cells = self._write_image_data(chainguard_analyses, "body_green")
+        chainguard_cells = self._write_image_data(chainguard_analyses, "body_green", include_negligible)
 
         # Roll-up metrics section
         self._write_rollup_section(
@@ -105,13 +110,14 @@ class ImageComparisonWriter(BaseSectionWriter):
 
         return alternative_cells, chainguard_cells, self.row
 
-    def _write_image_data(self, analyses: list[ImageAnalysis], format_key: str) -> dict:
+    def _write_image_data(self, analyses: list[ImageAnalysis], format_key: str, include_negligible: bool = False) -> dict:
         """
         Write image data rows and return cell references.
 
         Args:
             analyses: List of image analyses
             format_key: Format name to use
+            include_negligible: Whether to include negligible in total count
 
         Returns:
             Dictionary with start and end cell references
@@ -124,8 +130,9 @@ class ImageComparisonWriter(BaseSectionWriter):
             "high": xl_rowcol_to_cell(self.row, self.col + 5),
             "medium": xl_rowcol_to_cell(self.row, self.col + 6),
             "low": xl_rowcol_to_cell(self.row, self.col + 7),
-            "negligible": xl_rowcol_to_cell(self.row, self.col + 8),
         }
+        if include_negligible:
+            start_cells["negligible"] = xl_rowcol_to_cell(self.row, self.col + 8)
 
         for analysis in analyses:
             vuln = analysis.vulnerabilities
@@ -156,7 +163,10 @@ class ImageComparisonWriter(BaseSectionWriter):
             low_cell = xl_rowcol_to_cell(self.row, self.col + 7)
             negligible_cell = xl_rowcol_to_cell(self.row, self.col + 8)
 
-            cves_formula = f"={critical_cell}+{high_cell}+{medium_cell}+{low_cell}+{negligible_cell}"
+            if include_negligible:
+                cves_formula = f"={critical_cell}+{high_cell}+{medium_cell}+{low_cell}+{negligible_cell}"
+            else:
+                cves_formula = f"={critical_cell}+{high_cell}+{medium_cell}+{low_cell}"
             self.worksheet.write_formula(
                 self.row, self.col + 3, cves_formula, self.formatter.get(format_key)
             )
@@ -174,9 +184,12 @@ class ImageComparisonWriter(BaseSectionWriter):
             self.worksheet.write(
                 self.row, self.col + 7, vuln.low, self.formatter.get(format_key)
             )
-            self.worksheet.write(
-                self.row, self.col + 8, vuln.negligible, self.formatter.get(format_key)
-            )
+            
+            # Only write negligible column if flag is set
+            if include_negligible:
+                self.worksheet.write(
+                    self.row, self.col + 8, vuln.negligible, self.formatter.get(format_key)
+                )
 
             self.row += 1
 
@@ -188,8 +201,9 @@ class ImageComparisonWriter(BaseSectionWriter):
             "high": xl_rowcol_to_cell(self.row - 1, self.col + 5),
             "medium": xl_rowcol_to_cell(self.row - 1, self.col + 6),
             "low": xl_rowcol_to_cell(self.row - 1, self.col + 7),
-            "negligible": xl_rowcol_to_cell(self.row - 1, self.col + 8),
         }
+        if include_negligible:
+            end_cells["negligible"] = xl_rowcol_to_cell(self.row - 1, self.col + 8)
 
         return {"start": start_cells, "end": end_cells}
 
@@ -211,8 +225,10 @@ class ImageComparisonWriter(BaseSectionWriter):
             "high",
             "medium",
             "low",
-            "negligible",
         ]
+        if self.include_negligible:
+            all_metrics.append("negligible")
+            
         reduction_metrics = ["size", "packages", "cves"]
         num_columns = len(all_metrics) + 1  # +1 for label column
 
@@ -239,8 +255,10 @@ class ImageComparisonWriter(BaseSectionWriter):
             "High",
             "Medium",
             "Low",
-            "Negligible/Unknown",
         ]
+        if self.include_negligible:
+            header.append("Negligible/Unknown")
+            
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_blue")
         )
@@ -347,24 +365,27 @@ class ROISectionWriter(BaseSectionWriter):
         self.backlog_cost_cell = None
         self.yearly_cost_cell = None
 
-    def write(self, scan_results: list["ScanResult"]) -> tuple[str, str, int]:
+    def write(self, scan_results: list["ScanResult"], include_negligible: bool = False) -> tuple[str, str, int]:
         """
         Write ROI estimation sections.
 
         Args:
             scan_results: Scan results with image pair information
+            include_negligible: Whether to include negligible in total count
 
         Returns:
             Tuple of (backlog_cost_cell, yearly_cost_cell, final_row)
         """
         self.row += 2
+        self.include_negligible = include_negligible
 
-        # Header
+        # Header - span across all columns
+        header_end_col = 8 if include_negligible else 7
         self.worksheet.merge_range(
             self.row,
             self.col,
             self.row,
-            self.col + 8,
+            self.col + header_end_col,
             "ROI Estimate for Using Chainguard images vs upstream (Annually)",
             self.formatter.get("header_blue"),
         )
@@ -421,11 +442,14 @@ class ROISectionWriter(BaseSectionWriter):
 
     def _write_backlog_section(self, scan_results: list["ScanResult"]):
         """Write CVE backlog remediation section."""
+        # Determine column count based on whether negligible is shown
+        num_cols = 8 if self.include_negligible else 7
+        
         self.worksheet.merge_range(
             self.row,
             self.col,
             self.row,
-            self.col + 8,
+            self.col + num_cols,
             "Clear the CVE Backlog Effort",
             self.formatter.get("header_darkgrey"),
         )
@@ -439,17 +463,20 @@ class ROISectionWriter(BaseSectionWriter):
             "Highs",
             "Mediums",
             "Lows",
-            "Negligible/Unknown",
-            "Hours",
-            "Cost",
         ]
+        if self.include_negligible:
+            header.append("Negligible/Unknown")
+        header.extend(["Hours", "Cost"])
+        
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_lightgrey")
         )
         self.row += 1
 
-        backlog_hours_start = xl_rowcol_to_cell(self.row, self.col + 7)
-        backlog_cost_start = xl_rowcol_to_cell(self.row, self.col + 8)
+        hours_col = 7 if self.include_negligible else 6
+        cost_col = 8 if self.include_negligible else 7
+        backlog_hours_start = xl_rowcol_to_cell(self.row, self.col + hours_col)
+        backlog_cost_start = xl_rowcol_to_cell(self.row, self.col + cost_col)
 
         for result in scan_results:
             analysis = result.alternative_analysis
@@ -468,7 +495,10 @@ class ROISectionWriter(BaseSectionWriter):
             negligible_cell = xl_rowcol_to_cell(self.row, self.col + 6)
 
             # CVEs today formula
-            cves_formula = f"={critical_cell}+{high_cell}+{medium_cell}+{low_cell}+{negligible_cell}"
+            if self.include_negligible:
+                cves_formula = f"={critical_cell}+{high_cell}+{medium_cell}+{low_cell}+{negligible_cell}"
+            else:
+                cves_formula = f"={critical_cell}+{high_cell}+{medium_cell}+{low_cell}"
             self.worksheet.write_formula(
                 self.row, self.col + 1, cves_formula, self.formatter.get("body_white")
             )
@@ -487,65 +517,72 @@ class ROISectionWriter(BaseSectionWriter):
             self.worksheet.write(
                 self.row, self.col + 5, vuln.low, self.formatter.get("body_white")
             )
-            self.worksheet.write(
-                self.row,
-                self.col + 6,
-                vuln.negligible,
-                self.formatter.get("body_white"),
-            )
+            
+            # Only write negligible if flag is set
+            if self.include_negligible:
+                self.worksheet.write(
+                    self.row,
+                    self.col + 6,
+                    vuln.negligible,
+                    self.formatter.get("body_white"),
+                )
 
             # Hours formula
             hours_formula = f"={self.time_per_vuln_cell} * {cves_cell}"
             self.worksheet.write_formula(
                 self.row,
-                self.col + 7,
+                self.col + hours_col,
                 hours_formula,
                 self.formatter.get("body_white_hours"),
             )
-            hours_cell = xl_rowcol_to_cell(self.row, self.col + 7)
+            hours_cell = xl_rowcol_to_cell(self.row, self.col + hours_col)
 
             # Cost formula
             cost_formula = f"={self.hourly_rate_cell} * {hours_cell}"
             self.worksheet.write_formula(
                 self.row,
-                self.col + 8,
+                self.col + cost_col,
                 cost_formula,
                 self.formatter.get("body_white_money"),
             )
 
             self.row += 1
 
-        backlog_hours_end = xl_rowcol_to_cell(self.row - 1, self.col + 7)
-        backlog_cost_end = xl_rowcol_to_cell(self.row - 1, self.col + 8)
+        backlog_hours_end = xl_rowcol_to_cell(self.row - 1, self.col + hours_col)
+        backlog_cost_end = xl_rowcol_to_cell(self.row - 1, self.col + cost_col)
 
         # Totals
         self.worksheet.write_formula(
             self.row,
-            self.col + 7,
+            self.col + hours_col,
             f"=SUM({backlog_hours_start}:{backlog_hours_end})",
             self.formatter.get("body_green_hours"),
         )
 
         self.worksheet.write_formula(
             self.row,
-            self.col + 8,
+            self.col + cost_col,
             f"=SUM({backlog_cost_start}:{backlog_cost_end})",
             self.formatter.get("body_green_money"),
         )
-        self.backlog_cost_cell = xl_rowcol_to_cell(self.row, self.col + 8)
+        self.backlog_cost_cell = xl_rowcol_to_cell(self.row, self.col + cost_col)
 
+        label_col = 9 if self.include_negligible else 8
         self.worksheet.write(
-            self.row, self.col + 9, "Total (backlog)", self.formatter.get("body_green")
+            self.row, self.col + label_col, "Total (backlog)", self.formatter.get("body_green")
         )
         self.row += 2
 
     def _write_estimated_cves_section(self, scan_results: list["ScanResult"]):
         """Write estimated future CVEs section."""
+        # Determine column count based on whether negligible is shown
+        num_cols = 8 if self.include_negligible else 7
+        
         self.worksheet.merge_range(
             self.row,
             self.col,
             self.row,
-            self.col + 8,
+            self.col + num_cols,
             "Estimated New CVEs Effort (next month)",
             self.formatter.get("header_darkgrey"),
         )
@@ -558,17 +595,20 @@ class ROISectionWriter(BaseSectionWriter):
             "Est. Highs",
             "Est. Mediums",
             "Est. Lows",
-            "Est. Negligible/Unknown",
-            "Hours",
-            "Cost",
         ]
+        if self.include_negligible:
+            header.append("Est. Negligible/Unknown")
+        header.extend(["Hours", "Cost"])
+        
         self.worksheet.write_row(
             self.row, self.col, header, self.formatter.get("header_lightgrey")
         )
         self.row += 1
 
-        est_hours_start = xl_rowcol_to_cell(self.row, self.col + 7)
-        est_cost_start = xl_rowcol_to_cell(self.row, self.col + 8)
+        hours_col = 7 if self.include_negligible else 6
+        cost_col = 8 if self.include_negligible else 7
+        est_hours_start = xl_rowcol_to_cell(self.row, self.col + hours_col)
+        est_cost_start = xl_rowcol_to_cell(self.row, self.col + cost_col)
 
         for result in scan_results:
             analysis = result.alternative_analysis
@@ -600,7 +640,10 @@ class ROISectionWriter(BaseSectionWriter):
             est_negligible_cell = xl_rowcol_to_cell(self.row, self.col + 6)
 
             # Est. New CVEs formula
-            est_total_formula = f"={est_critical_cell}+{est_high_cell}+{est_medium_cell}+{est_low_cell}+{est_negligible_cell}"
+            if self.include_negligible:
+                est_total_formula = f"={est_critical_cell}+{est_high_cell}+{est_medium_cell}+{est_low_cell}+{est_negligible_cell}"
+            else:
+                est_total_formula = f"={est_critical_cell}+{est_high_cell}+{est_medium_cell}+{est_low_cell}"
             self.worksheet.write_formula(
                 self.row,
                 self.col + 1,
@@ -634,56 +677,60 @@ class ROISectionWriter(BaseSectionWriter):
                 round(est_low, 2),
                 self.formatter.get("body_white"),
             )
-            self.worksheet.write(
-                self.row,
-                self.col + 6,
-                round(est_negligible, 2),
-                self.formatter.get("body_white"),
-            )
+            
+            # Only write negligible if flag is set
+            if self.include_negligible:
+                self.worksheet.write(
+                    self.row,
+                    self.col + 6,
+                    round(est_negligible, 2),
+                    self.formatter.get("body_white"),
+                )
 
             # Hours and cost formulas
             hours_formula = f"={self.time_per_vuln_cell} * {est_total_cell}"
             self.worksheet.write_formula(
                 self.row,
-                self.col + 7,
+                self.col + hours_col,
                 hours_formula,
                 self.formatter.get("body_white_hours"),
             )
-            hours_cell = xl_rowcol_to_cell(self.row, self.col + 7)
+            hours_cell = xl_rowcol_to_cell(self.row, self.col + hours_col)
 
             cost_formula = f"={self.hourly_rate_cell} * {hours_cell}"
             self.worksheet.write_formula(
                 self.row,
-                self.col + 8,
+                self.col + cost_col,
                 cost_formula,
                 self.formatter.get("body_white_money"),
             )
 
             self.row += 1
 
-        est_hours_end = xl_rowcol_to_cell(self.row - 1, self.col + 7)
-        est_cost_end = xl_rowcol_to_cell(self.row - 1, self.col + 8)
+        est_hours_end = xl_rowcol_to_cell(self.row - 1, self.col + hours_col)
+        est_cost_end = xl_rowcol_to_cell(self.row - 1, self.col + cost_col)
 
         # Monthly totals
         self.worksheet.write_formula(
             self.row,
-            self.col + 7,
+            self.col + hours_col,
             f"=SUM({est_hours_start}:{est_hours_end})",
             self.formatter.get("body_lightblue_hours"),
         )
-        monthly_hours_cell = xl_rowcol_to_cell(self.row, self.col + 7)
+        monthly_hours_cell = xl_rowcol_to_cell(self.row, self.col + hours_col)
 
         self.worksheet.write_formula(
             self.row,
-            self.col + 8,
+            self.col + cost_col,
             f"=SUM({est_cost_start}:{est_cost_end})",
             self.formatter.get("body_lightblue_money"),
         )
-        monthly_cost_cell = xl_rowcol_to_cell(self.row, self.col + 8)
+        monthly_cost_cell = xl_rowcol_to_cell(self.row, self.col + cost_col)
 
+        label_col = 9 if self.include_negligible else 8
         self.worksheet.write(
             self.row,
-            self.col + 9,
+            self.col + label_col,
             "Total (next month)",
             self.formatter.get("body_lightblue"),
         )
@@ -692,22 +739,22 @@ class ROISectionWriter(BaseSectionWriter):
         # Yearly totals
         self.worksheet.write_formula(
             self.row,
-            self.col + 7,
+            self.col + hours_col,
             f"={monthly_hours_cell} * 12",
             self.formatter.get("body_green_hours"),
         )
 
         self.worksheet.write_formula(
             self.row,
-            self.col + 8,
+            self.col + cost_col,
             f"={monthly_cost_cell} * 12",
             self.formatter.get("body_green_money"),
         )
-        self.yearly_cost_cell = xl_rowcol_to_cell(self.row, self.col + 8)
+        self.yearly_cost_cell = xl_rowcol_to_cell(self.row, self.col + cost_col)
 
         self.worksheet.write(
             self.row,
-            self.col + 9,
+            self.col + label_col,
             "Total (next year)",
             self.formatter.get("body_green"),
         )

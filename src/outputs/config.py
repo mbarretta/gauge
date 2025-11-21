@@ -22,6 +22,7 @@ class GeneratorConfig:
 
     customer_name: str = "Customer"
     platform: str = DEFAULT_PLATFORM
+    include_negligible: bool = False
 
     def validate(self) -> None:
         """
