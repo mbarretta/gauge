@@ -111,14 +111,14 @@ class XLSXGenerator(OutputGenerator):
         # Image comparison section
         image_writer = ImageComparisonWriter(worksheet, formatter, row)
         alternative_cells, chainguard_cells, row = image_writer.write(
-            alternative_analyses, chainguard_analyses, config.platform
+            alternative_analyses, chainguard_analyses, config.platform, config.include_negligible
         )
 
         # ROI sections
         roi_writer = ROISectionWriter(
             worksheet, formatter, row, config.hours_per_vuln, config.hourly_rate
         )
-        backlog_cost_cell, yearly_cost_cell, row = roi_writer.write(successful)
+        backlog_cost_cell, yearly_cost_cell, row = roi_writer.write(successful, config.include_negligible)
 
         # FIPS sections
         fips_initial_cost_cell = None

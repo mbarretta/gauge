@@ -117,7 +117,7 @@ class HTMLGenerator:
             raise OutputException("html", "No successful scan results to report")
 
         # Calculate metrics
-        metrics = self._calculate_metrics(successful)
+        metrics = self._calculate_metrics(successful, config.include_negligible)
 
         # Load executive summary and appendix
         exec_summary = self._load_exec_summary(
@@ -166,9 +166,9 @@ class HTMLGenerator:
 
         logger.info(f"Vulnerability assessment summary generated: {output_path}")
 
-    def _calculate_metrics(self, results: list[ScanResult]) -> dict:
+    def _calculate_metrics(self, results: list[ScanResult], include_negligible: bool = False) -> dict:
         """Calculate CVE reduction metrics using MetricsCalculator."""
-        return MetricsCalculator.calculate_metrics(results)
+        return MetricsCalculator.calculate_metrics(results, include_negligible)
 
     def _build_html_template(
         self,

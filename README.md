@@ -230,6 +230,20 @@ This will fetch CISA's KEV catalog and identify which CVEs in your images are ac
 
 **Note:** The KEV catalog is fetched from CISA on each run when `--with-kevs` is enabled. This ensures you always have the most up-to-date list of exploited vulnerabilities.
 
+### CVE Severity Filtering
+
+By default, Negligible and Unknown severity CVEs are excluded from reports and totals. Use `--include-negligible` to include them:
+
+```bash
+# Default: excludes Negligible/Unknown
+gauge --input images.csv
+# Output: nginx - 325 CVEs
+
+# With flag: includes all severities  
+gauge --input images.csv --include-negligible
+# Output: nginx - 847 CVEs (includes 522 Negligible)
+```
+
 ### Enable All Optional Features
 
 Use `--with-all` as a shortcut to enable CHPS scoring, FIPS detection, and KEV tracking all at once:
@@ -475,6 +489,7 @@ See `gauge match --help` for all options.
 | `-c, --customer` | "Customer" | Customer name for report branding |
 | `--max-workers` | 4 | Number of parallel scanning threads |
 | `--platform` | `linux/amd64` | Platform for image pulls and scans (ensures consistency across all environments including ARM64 Macs) |
+| `--include-negligible` | - | Include Negligible/Unknown severity CVEs in total counts and reports (excluded by default) |
 | `-v, --verbose` | - | Enable verbose logging |
 
 ### Assessment Summary Options (HTML)

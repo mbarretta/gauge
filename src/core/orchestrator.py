@@ -400,6 +400,7 @@ class GaugeOrchestrator:
                 exec_summary_path=exec_summary,
                 appendix_path=appendix,
                 kev_catalog=self.kev_catalog,
+                include_negligible=self.args.include_negligible,
             )
             generator.generate(self.results, html_path, html_config)
             output_files["vuln_summary"] = html_path
@@ -413,6 +414,7 @@ class GaugeOrchestrator:
                 hourly_rate=self.args.hourly_rate,
                 auto_detect_fips=self.args.with_fips,
                 kev_catalog=self.kev_catalog,
+                include_negligible=self.args.include_negligible,
             )
             generator.generate(self.results, xlsx_path, xlsx_config)
             output_files["cost_analysis"] = xlsx_path

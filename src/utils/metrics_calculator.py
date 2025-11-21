@@ -16,12 +16,13 @@ class MetricsCalculator:
     SEVERITY_ORDER = ["Critical", "High", "Medium", "Low", "Negligible"]
 
     @staticmethod
-    def calculate_metrics(results: list[ScanResult]) -> dict[str, Any]:
+    def calculate_metrics(results: list[ScanResult], include_negligible: bool = False) -> dict[str, Any]:
         """
         Calculate comprehensive vulnerability reduction metrics.
 
         Args:
             results: List of ScanResult objects from image comparisons
+            include_negligible: Whether to include Negligible/Unknown CVEs in counts (default: False)
 
         Returns:
             Dictionary containing:
@@ -42,10 +43,10 @@ class MetricsCalculator:
         """
         # Total vulnerability counts
         total_customer_vulns = sum(
-            r.alternative_analysis.vulnerabilities.total for r in results
+            r.alternative_analysis.vulnerabilities.get_total(include_negligible) for r in results
         )
         total_cgr_vulns = sum(
-            r.chainguard_analysis.vulnerabilities.total for r in results
+            r.chainguard_analysis.vulnerabilities.get_total(include_negligible) for r in results
         )
         total_reduction = total_customer_vulns - total_cgr_vulns
 
@@ -58,8 +59,8 @@ class MetricsCalculator:
         images_with_reduction = sum(
             1
             for r in results
-            if r.chainguard_analysis.vulnerabilities.total
-            < r.alternative_analysis.vulnerabilities.total
+            if r.chainguard_analysis.vulnerabilities.get_total(include_negligible)
+            < r.alternative_analysis.vulnerabilities.get_total(include_negligible)
         )
 
         # Average reduction per image
