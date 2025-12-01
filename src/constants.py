@@ -33,6 +33,9 @@ CHAINGUARD_IMAGE_COST = 29000
 DEFAULT_MAX_WORKERS = 2
 """Default number of concurrent workers for parallel scanning (reduced from 4 to reduce Docker daemon contention)."""
 
+DEFAULT_CHPS_MAX_WORKERS = 2
+"""Default number of concurrent workers for parallel CHPS scanning."""
+
 # ============================================================================
 # Image Matching Configuration
 # ============================================================================

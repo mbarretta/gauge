@@ -8,6 +8,7 @@ supporting both Docker and Podman automatically.
 import json
 import logging
 import os
+import re
 import subprocess
 from typing import Optional
 
@@ -36,6 +37,22 @@ class DockerClient:
         if not self.runtime:
             raise RuntimeError("Neither docker nor podman found in PATH")
         logger.debug(f"Using container runtime: {self.runtime}")
+
+        self.skopeo_available = self._check_skopeo_available()
+        if not self.skopeo_available:
+            logger.debug("skopeo not found, will not be able to find latest tags")
+
+    def _check_skopeo_available(self) -> bool:
+        """Check if skopeo is available."""
+        try:
+            result = subprocess.run(
+                ["skopeo", "--version"],
+                capture_output=True,
+                timeout=VERSION_CHECK_TIMEOUT,
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
 
     def _detect_runtime(self) -> Optional[str]:
         """Detect available container runtime."""
@@ -587,6 +604,50 @@ class DockerClient:
         base_image = image.rsplit(":", 1)[0]
         return f"{base_image}:latest"
 
+    def _sort_versions(self, versions: list[str]) -> list[str]:
+        """Sort versions numerically."""
+        def version_key(v):
+            return [int(x) for x in v.split('.')]
+        return sorted(versions, key=version_key, reverse=True)
+
+    def _get_most_recent_tag_with_skopeo(self, image: str) -> Optional[str]:
+        """
+        Use skopeo to find the most recent tag for an image.
+        """
+        if not self.skopeo_available:
+            return None
+
+        base_image = image.rsplit(":", 1)[0]
+        logger.debug(f"Using skopeo to find tags for {base_image}")
+
+        try:
+            cmd = ["skopeo", "list-tags", f"docker://{base_image}"]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=API_REQUEST_TIMEOUT,
+            )
+            if result.returncode != 0:
+                logger.debug(f"skopeo list-tags failed for {base_image}: {result.stderr}")
+                return None
+
+            data = json.loads(result.stdout)
+            tags = data.get("Tags", [])
+            
+            # Filter for version-like tags
+            version_tags = [t for t in tags if re.match(r"^\d+(\.\d+)*$", t)]
+            if not version_tags:
+                return None
+
+            # Sort versions to find the latest
+            sorted_tags = self._sort_versions(version_tags)
+            return sorted_tags[0]
+
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError) as e:
+            logger.debug(f"skopeo failed for {base_image}: {e}")
+            return None
+
     def pull_image_with_fallback(
         self,
         image: str,
@@ -601,6 +662,7 @@ class DockerClient:
         2. If upstream image provided (from upstream discovery), try that
         3. If Docker Hub image and failed, try mirror.gcr.io fallback
         4. If that fails, try with :latest tag as last resort
+        5. If that fails, try to find the most recent tag with skopeo
 
         Args:
             image: Image reference to pull
@@ -692,6 +754,21 @@ class DockerClient:
                 return latest_image, True, True, "none"
 
             logger.debug(f"Fallback to {latest_image} failed: {stderr}")
+
+        # Strategy 5: Try to find most recent tag with skopeo
+        most_recent_tag = self._get_most_recent_tag_with_skopeo(image)
+        if most_recent_tag:
+            base_image = image.rsplit(":", 1)[0]
+            new_image = f"{base_image}:{most_recent_tag}"
+            logger.warning(f"Trying most recent tag with skopeo: {new_image}")
+            success, stderr = self._attempt_pull(new_image, platform)
+            last_stderr = stderr
+
+            if success:
+                logger.info(f"✓ Successfully fell back to {new_image} using skopeo")
+                return new_image, True, True, "none"
+            
+            logger.debug(f"Fallback to {new_image} with skopeo failed: {stderr}")
 
         # All strategies failed - classify the error type from last attempt
         logger.error(f"All fallback strategies failed for {original_image}")

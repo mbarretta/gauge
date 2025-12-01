@@ -51,6 +51,7 @@ class VulnerabilityScanner:
         platform: Optional[str] = DEFAULT_PLATFORM,
         check_fresh_images: bool = True,
         with_chps: bool = False,
+        chps_max_workers: int = 2,
         kev_catalog: Optional['KEVCatalog'] = None,
     ):
         """
@@ -63,6 +64,7 @@ class VulnerabilityScanner:
             platform: Platform specification for scans (e.g., "linux/amd64")
             check_fresh_images: Whether to ensure images are up-to-date
             with_chps: Whether to include CHPS scoring
+            chps_max_workers: Maximum parallel CHPS scanning threads
             kev_catalog: KEV catalog for checking known exploited vulnerabilities
         """
         self.cache = cache
@@ -71,6 +73,7 @@ class VulnerabilityScanner:
         self.platform = platform
         self.check_fresh_images = check_fresh_images
         self.with_chps = with_chps
+        self.chps_max_workers = chps_max_workers
         self.kev_catalog = kev_catalog
         self.retry_queue = RetryQueue()
 
@@ -146,8 +149,8 @@ class VulnerabilityScanner:
                         image=original_image,
                         platform=self.platform,
                         error_message=error_msg,
-                        context=context,
                         error_type=error_type,
+                        context=context,
                         pair_index=pair_index
                     )
 
@@ -156,10 +159,9 @@ class VulnerabilityScanner:
         # Get image digest for caching
         digest = self.docker.get_image_digest(image)
 
-        # Check cache (with CHPS and KEV requirements if enabled)
-        require_chps = self.chps_scanner is not None
+        # Check cache (with KEV requirements if enabled)
         require_kevs = self.kev_catalog is not None
-        cached = self.cache.get(image, digest, require_chps=require_chps, require_kevs=require_kevs)
+        cached = self.cache.get(image, digest, require_kevs=require_kevs)
         if cached:
             logger.info(f"✓ {image} (cached)")
             # If we used fallback, update the cached result to reflect that
@@ -194,17 +196,7 @@ class VulnerabilityScanner:
                 if kev_cves:
                     logger.info(f"⚠️  {len(kev_cves)} Known Exploited Vulnerabilities found in {image}")
 
-            # Run CHPS scoring if requested
-            chps_score = None
-            if self.chps_scanner:
-                logger.debug(f"Running CHPS scan for {image}")
-                chps_score = self.chps_scanner.scan_image(image)
-                if chps_score:
-                    logger.info(f"CHPS score for {image}: {chps_score.score} ({chps_score.grade})")
-                else:
-                    logger.warning(f"No CHPS score returned for {image}")
-
-            # Create analysis result
+            # Create analysis result (CHPS score will be added later)
             analysis = ImageAnalysis(
                 name=image,
                 size_mb=size_mb,
@@ -213,7 +205,6 @@ class VulnerabilityScanner:
                 scan_timestamp=datetime.now(timezone.utc),
                 digest=digest,
                 cache_hit=False,
-                chps_score=chps_score,
                 used_latest_fallback=used_fallback,
                 original_image=original_image if used_fallback else None,
                 kev_count=len(kev_cves),
@@ -465,9 +456,13 @@ class VulnerabilityScanner:
                     )
 
         # Log summary
-        successful = sum(1 for r in results if r.scan_successful)
-        failed = len(results) - successful
-        logger.info(f"Initial scan complete: {successful} succeeded, {failed} failed")
+        successful_scans = [r for r in results if r.scan_successful]
+        failed_scans = [r for r in results if not r.scan_successful]
+        logger.info(f"Initial scan complete: {len(successful_scans)} succeeded, {len(failed_scans)} failed")
+
+        # Run CHPS scans in parallel if enabled
+        if self.with_chps and self.chps_scanner and self.chps_scanner.chps_available and successful_scans:
+            results = self._run_chps_scans_parallel(results)
 
         # Process retry queue if there are failed pulls
         if not self.retry_queue.is_empty():
@@ -478,6 +473,58 @@ class VulnerabilityScanner:
         self._display_failure_summary()
 
         return results
+
+    def _run_chps_scans_parallel(self, results: list[ScanResult]) -> list[ScanResult]:
+        """Run CHPS scans in parallel for all successful scans."""
+        logger.info(f"Running CHPS scans for {len(results) * 2} images with {self.chps_max_workers} workers...")
+        
+        # Collect all unique images to scan
+        images_to_scan = {}
+        for r in results:
+            if r.alternative_analysis:
+                images_to_scan[r.alternative_analysis.name] = r.alternative_analysis
+            if r.chainguard_analysis:
+                images_to_scan[r.chainguard_analysis.name] = r.chainguard_analysis
+        
+        chps_scores = {}
+        with ThreadPoolExecutor(max_workers=self.chps_max_workers) as executor:
+            future_to_image = {
+                executor.submit(self.chps_scanner.scan_image, image_name): image_name
+                for image_name in images_to_scan
+            }
+            for future in as_completed(future_to_image):
+                image_name = future_to_image[future]
+                try:
+                    score = future.result()
+                    if score:
+                        chps_scores[image_name] = score
+                except Exception as e:
+                    logger.warning(f"CHPS scan for {image_name} failed: {e}")
+        
+        # Update results with CHPS scores
+        updated_results = []
+        for r in results:
+            new_alt_analysis = r.alternative_analysis
+            if r.alternative_analysis and r.alternative_analysis.name in chps_scores:
+                new_alt_analysis = replace(
+                    r.alternative_analysis,
+                    chps_score=chps_scores[r.alternative_analysis.name]
+                )
+            
+            new_cg_analysis = r.chainguard_analysis
+            if r.chainguard_analysis and r.chainguard_analysis.name in chps_scores:
+                new_cg_analysis = replace(
+                    r.chainguard_analysis,
+                    chps_score=chps_scores[r.chainguard_analysis.name]
+                )
+            
+            updated_results.append(replace(
+                r,
+                alternative_analysis=new_alt_analysis,
+                chainguard_analysis=new_cg_analysis,
+            ))
+            
+        return updated_results
 
     def _display_failure_summary(self) -> None:
         """Display categorized summary of all failures."""

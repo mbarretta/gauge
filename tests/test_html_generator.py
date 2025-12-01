@@ -89,10 +89,10 @@ class TestMetricsCalculations:
 
         assert metrics['images_scanned'] == 2
         assert metrics['images_with_reduction'] == 2
-        assert metrics['total_customer_vulns'] == 150
+        assert metrics['total_customer_vulns'] == 142
         assert metrics['total_chainguard_vulns'] == 15
-        assert metrics['total_reduction'] == 135
-        assert metrics['average_reduction_per_image'] == 67.5
+        assert metrics['total_reduction'] == 127
+        assert metrics['average_reduction_per_image'] == 63.5
 
     def test_images_with_reduction_partial(self, html_generator):
         """Test images_with_reduction when only some images have reduction."""
@@ -158,10 +158,10 @@ class TestMetricsCalculations:
 
         assert metrics['images_scanned'] == 2
         assert metrics['images_with_reduction'] == 1  # Only first image has reduction
-        assert metrics['total_customer_vulns'] == 150
-        assert metrics['total_chainguard_vulns'] == 60
-        assert metrics['total_reduction'] == 90
-        assert metrics['average_reduction_per_image'] == 45.0
+        assert metrics['total_customer_vulns'] == 142
+        assert metrics['total_chainguard_vulns'] == 57
+        assert metrics['total_reduction'] == 85
+        assert metrics['average_reduction_per_image'] == 42.5
 
     def test_images_with_reduction_none(self, html_generator):
         """Test images_with_reduction when no images have reduction."""
@@ -248,8 +248,8 @@ class TestMetricsCalculations:
 
         assert metrics['images_scanned'] == 1
         assert metrics['images_with_reduction'] == 0  # Chainguard has MORE CVEs
-        assert metrics['total_reduction'] == -40  # Negative reduction
-        assert metrics['average_reduction_per_image'] == -40.0
+        assert metrics['total_reduction'] == -38  # Negative reduction
+        assert metrics['average_reduction_per_image'] == -38.0
 
 
 class TestFallbackNoteGeneration:

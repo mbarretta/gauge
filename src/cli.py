@@ -21,6 +21,7 @@ from constants import (
     DEFAULT_UPSTREAM_CONFIDENCE,
     DEFAULT_LLM_CONFIDENCE,
     DEFAULT_LLM_MODEL,
+    DEFAULT_CHPS_MAX_WORKERS,
 )
 from common import OUTPUT_CONFIGS, GitHubAuthValidator
 from core.orchestrator import GaugeOrchestrator
@@ -98,6 +99,7 @@ def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     features_group.add_argument("--with-kevs", action="store_true", help="Include KEV data.")
     features_group.add_argument("--with-all", action="store_true", help="Enable all optional features.")
     features_group.add_argument("--include-negligible", action="store_true", help="Include Negligible/Unknown CVEs in counts (excluded by default).")
+    features_group.add_argument("--chps-max-workers", type=int, default=DEFAULT_CHPS_MAX_WORKERS, help="Number of parallel CHPS scanning threads.")
 
     # Other options
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")

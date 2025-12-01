@@ -5,6 +5,7 @@ Tests for Docker utilities including fallback strategies.
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 import subprocess
+import re
 
 from utils.docker_utils import DockerClient
 
@@ -373,6 +374,79 @@ class TestEnsureFreshImage:
             )
 
             assert image == "mirror.gcr.io/library/python:3.12"
+            assert used_fallback is True
+            assert pull_successful is True
+            assert error_type == "none"
+
+
+class TestSkopeoFallback:
+    """Test skopeo fallback scenarios."""
+
+    @pytest.fixture
+    def docker_client_with_skopeo(self):
+        """Create a DockerClient instance with skopeo available."""
+        with patch.object(DockerClient, '_detect_runtime', return_value='docker'), \
+             patch.object(DockerClient, '_check_skopeo_available', return_value=True):
+            return DockerClient()
+
+    @pytest.fixture
+    def docker_client_without_skopeo(self):
+        """Create a DockerClient instance without skopeo available."""
+        with patch.object(DockerClient, '_detect_runtime', return_value='docker'), \
+             patch.object(DockerClient, '_check_skopeo_available', return_value=False):
+            return DockerClient()
+
+    def test_skopeo_not_available(self, docker_client_without_skopeo):
+        """Test that skopeo fallback is skipped if skopeo is not available."""
+        tag = docker_client_without_skopeo._get_most_recent_tag_with_skopeo("python:3.12")
+        assert tag is None
+
+    def test_get_most_recent_tag(self, docker_client_with_skopeo):
+        """Test that the most recent tag is correctly identified."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"Tags": ["1.0", "1.10", "1.2", "latest"]}'
+            )
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag == "1.10"
+
+    def test_skopeo_returns_error(self, docker_client_with_skopeo):
+        """Test that skopeo errors are handled gracefully."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=1, stderr="some error")
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag is None
+
+    def test_no_version_tags(self, docker_client_with_skopeo):
+        """Test that non-version tags are ignored."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"Tags": ["latest", "edge", "main"]}'
+            )
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag is None
+
+    def test_pull_with_skopeo_fallback(self, docker_client_with_skopeo):
+        """Test that pull_image_with_fallback uses skopeo."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.side_effect = [
+                # pull original fails
+                Mock(returncode=1, stderr="not found", stdout=""),
+                # mirror fallback fails
+                Mock(returncode=1, stderr="not found", stdout=""),
+                # pull with :latest fails
+                Mock(returncode=1, stderr="not found", stdout=""),
+                # skopeo list-tags succeeds
+                Mock(returncode=0, stdout='{"Tags": ["1.0", "1.10", "1.2"]}', stderr=""),
+                # pull with most recent tag succeeds
+                Mock(returncode=0, stderr="", stdout=""),
+            ]
+            image, used_fallback, pull_successful, error_type = docker_client_with_skopeo.pull_image_with_fallback(
+                "python:3.12-slim"
+            )
+            assert image == "python:1.10"
             assert used_fallback is True
             assert pull_successful is True
             assert error_type == "none"

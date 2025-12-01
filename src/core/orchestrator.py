@@ -87,6 +87,7 @@ class GaugeOrchestrator:
             platform=self.args.platform,
             check_fresh_images=not self.args.no_fresh_check,
             with_chps=self.args.with_chps,
+            chps_max_workers=self.args.chps_max_workers,
             kev_catalog=self.kev_catalog,
         )
 

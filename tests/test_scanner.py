@@ -9,28 +9,65 @@ from datetime import datetime, timezone
 
 from core.scanner import VulnerabilityScanner
 from core.cache import ScanCache
-from core.models import ImageAnalysis, VulnerabilityCount
+from core.models import ImageAnalysis, VulnerabilityCount, CHPSScore
 from utils.docker_utils import DockerClient
+from utils.chps_utils import CHPSScanner
+
+
+@pytest.fixture
+def mock_cache(tmp_path):
+    """Create a mock cache."""
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    return ScanCache(cache_dir=cache_dir, enabled=True)
+
+@pytest.fixture
+def mock_docker_client():
+    """Create a mock Docker client."""
+    client = Mock(spec=DockerClient)
+    client.runtime = "docker"
+    client.ensure_fresh_image.return_value = ("test:latest", False, True, "none")
+    client.get_image_digest.return_value = "sha256:abc123"
+    client.get_image_size_mb.return_value = 100.0
+    return client
+
+
+class TestCHPSParallelization:
+    """Test CHPS parallelization."""
+
+    @pytest.fixture
+    def scanner_with_chps(self, mock_cache, mock_docker_client):
+        """Create a scanner with CHPS enabled."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(returncode=0)
+            scanner = VulnerabilityScanner(
+                cache=mock_cache,
+                docker_client=mock_docker_client,
+                max_workers=2,
+                check_fresh_images=True,
+                with_chps=True,
+                chps_max_workers=2,
+            )
+            scanner.chps_scanner.scan_image = Mock(return_value=CHPSScore(score=95.0, grade="A+", details={}))
+        return scanner
+
+    def test_chps_scans_are_run_in_parallel(self, scanner_with_chps, sample_scan_result):
+        """Test that CHPS scans are run in parallel."""
+        results = [sample_scan_result]
+        updated_results = scanner_with_chps._run_chps_scans_parallel(results)
+
+        # Check that chps_scanner.scan_image was called for both images
+        assert scanner_with_chps.chps_scanner.scan_image.call_count == 2
+        
+        # Check that the chps_score is added to the analysis
+        assert updated_results[0].alternative_analysis.chps_score is not None
+        assert updated_results[0].chainguard_analysis.chps_score is not None
+        assert updated_results[0].alternative_analysis.chps_score.grade == "A+"
+        assert updated_results[0].chainguard_analysis.chps_score.grade == "A+"
 
 
 class TestScannerErrorHandling:
     """Test error handling in the vulnerability scanner."""
-
-    @pytest.fixture
-    def mock_cache(self, tmp_path):
-        """Create a mock cache."""
-        cache_dir = tmp_path / "cache"
-        cache_dir.mkdir()
-        return ScanCache(cache_dir=cache_dir, enabled=True)
-
-    @pytest.fixture
-    def mock_docker_client(self):
-        """Create a mock Docker client."""
-        client = Mock(spec=DockerClient)
-        client.ensure_fresh_image.return_value = ("test:latest", False, True, "none")
-        client.get_image_digest.return_value = "sha256:abc123"
-        client.get_image_size_mb.return_value = 100.0
-        return client
 
     @pytest.fixture
     def scanner(self, mock_cache, mock_docker_client):
