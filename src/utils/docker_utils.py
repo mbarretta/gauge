@@ -605,9 +605,9 @@ class DockerClient:
         return f"{base_image}:latest"
 
     def _sort_versions(self, versions: list[str]) -> list[str]:
-        """Sort versions numerically."""
+        """Sort versions numerically, handling 'v' prefix."""
         def version_key(v):
-            return [int(x) for x in v.split('.')]
+            return [int(x.lstrip('v')) for x in v.split('.')]
         return sorted(versions, key=version_key, reverse=True)
 
     def _get_most_recent_tag_with_skopeo(self, image: str) -> Optional[str]:
@@ -634,9 +634,16 @@ class DockerClient:
 
             data = json.loads(result.stdout)
             tags = data.get("Tags", [])
-            
-            # Filter for version-like tags
-            version_tags = [t for t in tags if re.match(r"^\d+(\.\d+)*$", t)]
+
+            if "latest" in tags:
+                return "latest"
+            if "main" in tags:
+                return "main"
+            if "master" in tags:
+                return "master"
+
+            # Filter for version-like tags, optionally with a 'v' prefix
+            version_tags = [t for t in tags if re.match(r"^v?\d+(\.\d+)*$", t)]
             if not version_tags:
                 return None
 

@@ -401,15 +401,55 @@ class TestSkopeoFallback:
         tag = docker_client_without_skopeo._get_most_recent_tag_with_skopeo("python:3.12")
         assert tag is None
 
-    def test_get_most_recent_tag(self, docker_client_with_skopeo):
-        """Test that the most recent tag is correctly identified."""
+    def test_get_latest_tag(self, docker_client_with_skopeo):
+        """Test that 'latest' tag is preferred."""
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = Mock(
                 returncode=0,
                 stdout='{"Tags": ["1.0", "1.10", "1.2", "latest"]}'
             )
             tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag == "latest"
+    
+    def test_get_main_tag(self, docker_client_with_skopeo):
+        """Test that 'main' tag is preferred when 'latest' is not present."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"Tags": ["1.0", "1.10", "1.2", "main"]}'
+            )
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag == "main"
+
+    def test_get_master_tag(self, docker_client_with_skopeo):
+        """Test that 'master' tag is preferred when 'latest' and 'main' are not present."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"Tags": ["1.0", "1.10", "1.2", "master"]}'
+            )
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag == "master"
+
+    def test_semver_fallback(self, docker_client_with_skopeo):
+        """Test that semver sorting is used as a fallback."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"Tags": ["1.0", "1.10", "1.2"]}'
+            )
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
             assert tag == "1.10"
+
+    def test_semver_with_v_prefix(self, docker_client_with_skopeo):
+        """Test that semver sorting handles 'v' prefix."""
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"Tags": ["v1.0", "v1.10", "v1.2"]}'
+            )
+            tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
+            assert tag == "v1.10"
 
     def test_skopeo_returns_error(self, docker_client_with_skopeo):
         """Test that skopeo errors are handled gracefully."""
@@ -423,7 +463,7 @@ class TestSkopeoFallback:
         with patch('subprocess.run') as mock_run:
             mock_run.return_value = Mock(
                 returncode=0,
-                stdout='{"Tags": ["latest", "edge", "main"]}'
+                stdout='{"Tags": ["edge"]}'
             )
             tag = docker_client_with_skopeo._get_most_recent_tag_with_skopeo("python")
             assert tag is None
@@ -439,14 +479,14 @@ class TestSkopeoFallback:
                 # pull with :latest fails
                 Mock(returncode=1, stderr="not found", stdout=""),
                 # skopeo list-tags succeeds
-                Mock(returncode=0, stdout='{"Tags": ["1.0", "1.10", "1.2"]}', stderr=""),
+                Mock(returncode=0, stdout='{"Tags": ["1.0", "1.10", "1.2", "master"]}', stderr=""),
                 # pull with most recent tag succeeds
                 Mock(returncode=0, stderr="", stdout=""),
             ]
             image, used_fallback, pull_successful, error_type = docker_client_with_skopeo.pull_image_with_fallback(
                 "python:3.12-slim"
             )
-            assert image == "python:1.10"
+            assert image == "python:master"
             assert used_fallback is True
             assert pull_successful is True
             assert error_type == "none"

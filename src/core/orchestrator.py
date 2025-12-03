@@ -3,6 +3,7 @@ Orchestrates the main workflow for Gauge - Container Vulnerability Assessment To
 """
 import csv
 import logging
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -18,6 +19,16 @@ from outputs.html_generator import HTMLGenerator
 from outputs.xlsx_generator import XLSXGenerator
 from utils.docker_utils import DockerClient
 from utils.logging_helpers import log_error_section
+
+# Read version from src/__init__.py (single source of truth)
+try:
+    init_file = Path(__file__).parent.parent / "__init__.py"
+    version_match = re.search(r'__version__\s*=\s*["\\]([^"]+["\\])', init_file.read_text())
+    if not version_match:
+        raise RuntimeError("Unable to find version string.")
+    __version__ = version_match.group(1)
+except Exception:
+    __version__ = "unknown"
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +57,7 @@ class GaugeOrchestrator:
         """
         Execute the main Gauge workflow.
         """
-        logger.info("Gauge - Container Vulnerability Assessment v2.0")
+        logger.info(f"Gauge - Container Vulnerability Assessment v{__version__}")
         logger.info("=" * 60)
 
         # Parse output types

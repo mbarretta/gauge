@@ -8,7 +8,10 @@ that can't be handled by heuristics alone.
 import json
 import logging
 import os
+import re
+import shutil
 import sqlite3
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +19,7 @@ from typing import Optional
 
 import anthropic
 
-from constants import DEFAULT_LLM_CONFIDENCE
+from constants import CLI_SUBPROCESS_TIMEOUT, DEFAULT_LLM_CONFIDENCE
 from integrations.github_metadata import GitHubMetadataClient
 
 logger = logging.getLogger(__name__)
@@ -206,6 +209,69 @@ class LLMMatcher:
         with open(self.telemetry_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(telemetry) + "\n")
 
+    def _search_chainguard_images(self, search_term: str, org: str = "chainguard-private") -> list[str]:
+        """
+        Search for available Chainguard images using chainctl.
+
+        Args:
+            search_term: Term to fuzzy search for
+            org: Chainguard organization (default: chainguard-private)
+
+        Returns:
+            List of matching image names
+        """
+        # Check if chainctl is available
+        if not shutil.which("chainctl"):
+            logger.debug("chainctl not available for image search")
+            return []
+
+        try:
+            # Get all image repos from chainctl
+            result = subprocess.run(
+                ["chainctl", "img", "repos", "list", "--parent", org, "-o", "json"],
+                capture_output=True,
+                text=True,
+                timeout=CLI_SUBPROCESS_TIMEOUT,
+            )
+
+            if result.returncode != 0:
+                logger.warning(f"chainctl img repos list failed: {result.stderr}")
+                return []
+
+            # Parse JSON output
+            repos_data = json.loads(result.stdout)
+            items = repos_data.get("items", [])
+
+            # Extract image names
+            all_images = [item.get("name", "") for item in items if item.get("name")]
+
+            # Fuzzy filter using search term
+            # Split search term into parts for flexible matching
+            search_parts = re.split(r"[-_\s]+", search_term.lower())
+
+            matching_images = []
+            for image in all_images:
+                image_lower = image.lower()
+                # Check if all search parts appear in the image name
+                if all(part in image_lower for part in search_parts if len(part) > 2):
+                    matching_images.append(image)
+
+            # Sort by relevance (shorter names that contain all terms rank higher)
+            matching_images.sort(key=lambda x: len(x))
+
+            logger.debug(f"Found {len(matching_images)} Chainguard images matching '{search_term}': {matching_images[:10]}")
+            return matching_images[:20]  # Limit to top 20 matches
+
+        except subprocess.TimeoutExpired:
+            logger.warning("chainctl image search timed out")
+            return []
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse chainctl output: {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"chainctl image search failed: {e}")
+            return []
+
     def _build_prompt(self, image_name: str) -> str:
         """
         Build matching prompt for Claude.
@@ -286,6 +352,178 @@ Respond with ONLY the JSON output, no additional text."""
 
         return prompt
 
+    def _enhanced_match(self, image_name: str) -> LLMMatchResult:
+        """
+        Enhanced matching using web search and chainctl to find the best match.
+
+        This method is called as a fallback when the simple LLM match fails.
+        It uses Claude's tool use to:
+        1. Search the web for the upstream project
+        2. Search available Chainguard images via chainctl
+        3. Reason about the best match
+
+        Args:
+            image_name: Source image to match
+
+        Returns:
+            LLMMatchResult with match and metadata
+        """
+        if not self.client:
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning="LLM matching disabled (no API key)",
+            )
+
+        start_time = time.time()
+
+        # Extract base name for searching
+        base_name = image_name
+        if "/" in base_name:
+            base_name = base_name.split("/")[-1]
+        if ":" in base_name:
+            base_name = base_name.split(":")[0]
+
+        # Search for candidate Chainguard images
+        # Try multiple search terms to increase chances of finding matches
+        search_terms = [base_name]
+
+        # Add individual words from the base name as search terms
+        words = re.split(r"[-_]+", base_name)
+        if len(words) > 1:
+            # Add the most significant words (usually not generic ones like "manager", "controller")
+            significant_words = [w for w in words if w.lower() not in ("manager", "controller", "server", "client")]
+            if significant_words:
+                search_terms.append(" ".join(significant_words[:2]))
+
+        candidate_images = set()
+        for term in search_terms:
+            candidates = self._search_chainguard_images(term)
+            candidate_images.update(candidates)
+
+        candidate_list = sorted(candidate_images)[:30]  # Limit to 30 candidates
+
+        logger.info(f"Enhanced matching for '{image_name}' with {len(candidate_list)} candidates")
+
+        # Build enhanced prompt with candidate list
+        candidates_str = "\n".join(f"  - {img}" for img in candidate_list) if candidate_list else "  (no candidates found via chainctl)"
+
+        enhanced_prompt = f"""You are an expert at matching container images to their Chainguard equivalents.
+
+**Image to match:** {image_name}
+
+**CRITICAL CONTEXT**: The simple match suggested an image that does NOT exist in the Chainguard registry.
+You MUST choose from the available images below, or return null if none match.
+
+**Available Chainguard images (verified via chainctl):**
+{candidates_str}
+
+**Your task:**
+1. Analyze the source image path and name to understand what software this is
+2. Use your knowledge about this software's upstream project and common naming conventions
+3. Match it to one of the available Chainguard images above
+
+**Key insights:**
+- mcr.microsoft.com/oss/kubernetes/* images are often Kubernetes cloud provider components
+- The upstream project for Azure Kubernetes components is typically kubernetes-sigs/cloud-provider-azure
+- Chainguard often uses the upstream project name (e.g., "cloud-provider-azure-*" rather than "azure-cloud-*")
+- registry.k8s.io/provider-*/* images map to cloud-provider-* in Chainguard
+
+**Output Format (JSON):**
+{{
+  "chainguard_image": "cgr.dev/chainguard-private/IMAGE:latest",
+  "confidence": 0.85,
+  "reasoning": "Brief explanation of why this match makes sense based on the upstream project"
+}}
+
+If no available image matches (confidence < 0.7), return:
+{{
+  "chainguard_image": null,
+  "confidence": 0.0,
+  "reasoning": "Explanation of why no match was possible"
+}}
+
+IMPORTANT: You MUST choose from the available images list above. Do NOT suggest images that aren't in the list.
+
+Respond with ONLY the JSON output, no additional text."""
+
+        try:
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": enhanced_prompt}],
+            )
+
+            latency_ms = (time.time() - start_time) * 1000
+
+            # Extract text response
+            response_text = message.content[0].text.strip() if message.content else None
+
+            if not response_text:
+                logger.warning("Enhanced match returned no text response")
+                return LLMMatchResult(
+                    chainguard_image=None,
+                    confidence=0.0,
+                    reasoning="No response from enhanced matching",
+                    latency_ms=latency_ms,
+                )
+
+            # Remove markdown code blocks if present
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+
+            response = json.loads(response_text)
+
+            result = LLMMatchResult(
+                chainguard_image=response.get("chainguard_image"),
+                confidence=response.get("confidence", 0.0),
+                reasoning=response.get("reasoning", ""),
+                cached=False,
+                latency_ms=latency_ms,
+            )
+
+            # Cache the result (with a marker that it was from enhanced matching)
+            self._cache_result(
+                image_name,
+                result.chainguard_image,
+                result.confidence,
+                f"[enhanced] {result.reasoning}",
+            )
+
+            logger.info(
+                f"Enhanced match for {image_name}: {result.chainguard_image} "
+                f"(confidence: {result.confidence:.0%}, latency: {latency_ms:.0f}ms)"
+            )
+
+            return result
+
+        except anthropic.APIError as e:
+            logger.error(f"Anthropic API error in enhanced matching: {e}")
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning=f"API error: {e}",
+            )
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse enhanced match response as JSON: {e}")
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning=f"JSON parse error: {e}",
+            )
+        except Exception as e:
+            logger.error(f"Enhanced matching error: {e}")
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning=f"Error: {e}",
+            )
+
     def match(self, image_name: str) -> LLMMatchResult:
         """
         Find Chainguard image match using LLM.
@@ -348,19 +586,63 @@ Respond with ONLY the JSON output, no additional text."""
                 latency_ms=latency_ms,
             )
 
-            # Cache the result
-            self._cache_result(
-                image_name, result.chainguard_image, result.confidence, result.reasoning
-            )
-
-            # Log telemetry
-            success = result.confidence >= self.confidence_threshold
-            self._log_telemetry(image_name, result, success)
-
             logger.info(
                 f"LLM match for {image_name}: {result.chainguard_image} "
                 f"(confidence: {result.confidence:.0%}, latency: {latency_ms:.0f}ms)"
             )
+
+            # Verify the suggested image actually exists
+            needs_enhanced = result.confidence < self.confidence_threshold
+            simple_match_invalid = False
+
+            if result.chainguard_image and result.confidence >= self.confidence_threshold:
+                # Extract image name from full reference for verification
+                suggested_name = result.chainguard_image
+                if "/" in suggested_name:
+                    suggested_name = suggested_name.split("/")[-1]
+                if ":" in suggested_name:
+                    suggested_name = suggested_name.split(":")[0]
+
+                # Check if image exists via chainctl
+                available_images = self._search_chainguard_images(suggested_name)
+                if not any(suggested_name == img or suggested_name in img for img in available_images):
+                    logger.warning(
+                        f"Simple match suggested '{suggested_name}' but it doesn't appear to exist in Chainguard registry"
+                    )
+                    needs_enhanced = True
+                    simple_match_invalid = True  # Mark as invalid so we prefer enhanced result
+
+            # If simple match failed, has low confidence, or suggested non-existent image, try enhanced matching
+            if needs_enhanced:
+                logger.info(
+                    f"Simple LLM match needs enhancement (confidence: {result.confidence:.0%}, "
+                    f"threshold: {self.confidence_threshold:.0%}), trying enhanced matching..."
+                )
+                enhanced_result = self._enhanced_match(image_name)
+
+                # Use enhanced result if it's better OR if simple match was invalid (non-existent image)
+                if enhanced_result.confidence > result.confidence or (
+                    simple_match_invalid and enhanced_result.confidence >= self.confidence_threshold
+                ):
+                    logger.info(
+                        f"Using enhanced match: {enhanced_result.chainguard_image} "
+                        f"(confidence: {enhanced_result.confidence:.0%})"
+                    )
+                    result = enhanced_result
+                else:
+                    # Cache the original result since enhanced didn't help
+                    self._cache_result(
+                        image_name, result.chainguard_image, result.confidence, result.reasoning
+                    )
+            else:
+                # Cache the successful simple result
+                self._cache_result(
+                    image_name, result.chainguard_image, result.confidence, result.reasoning
+                )
+
+            # Log telemetry
+            success = result.confidence >= self.confidence_threshold
+            self._log_telemetry(image_name, result, success)
 
             return result
 
