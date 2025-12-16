@@ -62,6 +62,16 @@ class TestOutputTypeParsing:
         result = self.orchestrator.parse_output_types('pricing,pricing,cost_analysis')
         assert result == {'pricing', 'cost_analysis'}
 
+    def test_both_alias_expands_to_vuln_summary_and_cost_analysis(self):
+        """Test that 'both' is an alias for vuln_summary and cost_analysis."""
+        result = self.orchestrator.parse_output_types('both')
+        assert result == {'vuln_summary', 'cost_analysis'}
+
+    def test_both_with_pricing_includes_all_three(self):
+        """Test that 'both,pricing' includes all three output types."""
+        result = self.orchestrator.parse_output_types('both,pricing')
+        assert result == {'vuln_summary', 'cost_analysis', 'pricing'}
+
 
 class TestCLIArguments:
     """Tests for parse_args function."""
@@ -95,6 +105,11 @@ class TestCLIArguments:
         """Test that -o short option works for --output."""
         args = parse_args(['-i', 'test.csv', '-o', 'pricing'])
         assert args.output == 'pricing'
+
+    def test_output_both_alias(self):
+        """Test --output with 'both' alias."""
+        args = parse_args(['-i', 'test.csv', '--output', 'both'])
+        assert args.output == 'both'
 
     def test_with_all_flag_sets_individual_flags(self):
         """Test that --with-all flag is parsed correctly."""
@@ -154,3 +169,10 @@ class TestCLIIntegration:
         with pytest.raises(ValueError) as exc_info:
             self.orchestrator.parse_output_types(args.output)
         assert 'Invalid output type(s): invalid' in str(exc_info.value)
+
+    def test_both_alias_workflow(self):
+        """Test workflow for generating both vuln_summary and cost_analysis using 'both' alias."""
+        args = parse_args(['-i', 'test.csv', '--output', 'both'])
+        self.orchestrator.args = args
+        output_types = self.orchestrator.parse_output_types(args.output)
+        assert output_types == {'vuln_summary', 'cost_analysis'}

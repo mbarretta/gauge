@@ -147,11 +147,16 @@ class GaugeOrchestrator:
         if output_arg is None:
             return {'vuln_summary', 'cost_analysis'}
         requested_types = {t.strip() for t in output_arg.split(",")}
+        # Handle 'both' as an alias for vuln_summary and cost_analysis
+        if 'both' in requested_types:
+            requested_types.discard('both')
+            requested_types.add('vuln_summary')
+            requested_types.add('cost_analysis')
         invalid_types = requested_types - valid_types
         if invalid_types:
             raise ValueError(
                 f"Invalid output type(s): {', '.join(invalid_types)}. "
-                f"Valid types: {', '.join(valid_types)}"
+                f"Valid types: {', '.join(valid_types)}, both"
             )
         if not requested_types:
             raise ValueError("At least one output type must be specified")
