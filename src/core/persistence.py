@@ -19,6 +19,7 @@ from core.models import (
     ScanResult,
     VulnerabilityCount,
 )
+from utils.validation import validate_image_reference
 
 logger = logging.getLogger(__name__)
 
@@ -208,10 +209,18 @@ class ScanResultPersistence:
         Returns:
             ScanResult instance
         """
+        # Validate image references to prevent checkpoint injection attacks
+        upstream_image = data["pair"].get("upstream_image")
         pair = ImagePair(
-            chainguard_image=data["pair"]["chainguard_image"],
-            alternative_image=data["pair"]["alternative_image"],
-            upstream_image=data["pair"].get("upstream_image"),
+            chainguard_image=validate_image_reference(
+                data["pair"]["chainguard_image"], "checkpoint chainguard_image"
+            ),
+            alternative_image=validate_image_reference(
+                data["pair"]["alternative_image"], "checkpoint alternative_image"
+            ),
+            upstream_image=validate_image_reference(
+                upstream_image, "checkpoint upstream_image"
+            ) if upstream_image else None,
         )
 
         return ScanResult(

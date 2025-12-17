@@ -15,7 +15,11 @@ WORKDIR /app
 USER root
 
 # Install Docker CLI, syft, and grype for vulnerability scanning
-RUN apk add --no-cache docker-cli syft grype
+# Versions pinned per infosec recommendation
+RUN apk add --no-cache \
+    docker-cli=29.1.3-r0 \
+    syft=1.38.2-r0 \
+    grype=0.104.2-r0
 
 # Copy installed packages from builder to root's local directory
 COPY --from=builder /home/nonroot/.local /root/.local
