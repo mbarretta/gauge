@@ -36,6 +36,11 @@ def setup_logging(verbose: bool = False):
         datefmt="%H:%M:%S",
     )
 
+    # Suppress noisy HTTP request logs from httpx/anthropic SDK
+    # These just show "HTTP Request: POST ... 200 OK" which isn't useful
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+
 
 def parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
     """Parse command-line arguments for the main scan command."""

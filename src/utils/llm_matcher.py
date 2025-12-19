@@ -13,9 +13,10 @@ import shutil
 import sqlite3
 import subprocess
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Generator, Optional
 
 import anthropic
 
@@ -96,27 +97,42 @@ class LLMMatcher:
         # Initialize GitHub metadata client for available images
         self.github_metadata = GitHubMetadataClient(github_token=github_token)
 
+        # Load full Chainguard catalog at initialization
+        self.chainguard_catalog = self._load_full_catalog()
+        if self.chainguard_catalog:
+            logger.info(f"Loaded {len(self.chainguard_catalog)} images from Chainguard catalog")
+        else:
+            logger.warning("Failed to load Chainguard catalog - LLM matching may be limited")
+
         # Telemetry
         self.telemetry_file = self.cache_dir / "llm_telemetry.jsonl"
 
+    @contextmanager
+    def _db_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager for SQLite database connections."""
+        conn = sqlite3.connect(self.cache_db)
+        try:
+            yield conn
+        finally:
+            conn.close()
+
     def _init_cache_db(self) -> None:
         """Initialize SQLite cache database."""
-        conn = sqlite3.connect(self.cache_db)
-        cursor = conn.cursor()
-        cursor.execute(
+        with self._db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS llm_cache (
+                    image_name TEXT PRIMARY KEY,
+                    model TEXT,
+                    chainguard_image TEXT,
+                    confidence REAL,
+                    reasoning TEXT,
+                    timestamp INTEGER
+                )
             """
-            CREATE TABLE IF NOT EXISTS llm_cache (
-                image_name TEXT PRIMARY KEY,
-                model TEXT,
-                chainguard_image TEXT,
-                confidence REAL,
-                reasoning TEXT,
-                timestamp INTEGER
             )
-        """
-        )
-        conn.commit()
-        conn.close()
+            conn.commit()
 
     def _get_cached_result(self, image_name: str) -> Optional[LLMMatchResult]:
         """
@@ -128,18 +144,17 @@ class LLMMatcher:
         Returns:
             Cached result if available, None otherwise
         """
-        conn = sqlite3.connect(self.cache_db)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT chainguard_image, confidence, reasoning
-            FROM llm_cache
-            WHERE image_name = ? AND model = ?
-        """,
-            (image_name, self.model),
-        )
-        row = cursor.fetchone()
-        conn.close()
+        with self._db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT chainguard_image, confidence, reasoning
+                FROM llm_cache
+                WHERE image_name = ? AND model = ?
+            """,
+                (image_name, self.model),
+            )
+            row = cursor.fetchone()
 
         if row:
             logger.debug(f"Cache hit for {image_name}")
@@ -168,18 +183,17 @@ class LLMMatcher:
             confidence: Confidence score
             reasoning: LLM reasoning
         """
-        conn = sqlite3.connect(self.cache_db)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO llm_cache
-            (image_name, model, chainguard_image, confidence, reasoning, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """,
-            (image_name, self.model, chainguard_image, confidence, reasoning, int(time.time())),
-        )
-        conn.commit()
-        conn.close()
+        with self._db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO llm_cache
+                (image_name, model, chainguard_image, confidence, reasoning, timestamp)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """,
+                (image_name, self.model, chainguard_image, confidence, reasoning, int(time.time())),
+            )
+            conn.commit()
 
     def _log_telemetry(
         self,
@@ -209,24 +223,21 @@ class LLMMatcher:
         with open(self.telemetry_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(telemetry) + "\n")
 
-    def _search_chainguard_images(self, search_term: str, org: str = "chainguard-private") -> list[str]:
+    def _load_full_catalog(self, org: str = "chainguard-private") -> list[str]:
         """
-        Search for available Chainguard images using chainctl.
+        Load the full Chainguard image catalog at initialization.
 
         Args:
-            search_term: Term to fuzzy search for
             org: Chainguard organization (default: chainguard-private)
 
         Returns:
-            List of matching image names
+            List of all available image names
         """
-        # Check if chainctl is available
         if not shutil.which("chainctl"):
-            logger.debug("chainctl not available for image search")
+            logger.debug("chainctl not available for catalog loading")
             return []
 
         try:
-            # Get all image repos from chainctl
             result = subprocess.run(
                 ["chainctl", "img", "repos", "list", "--parent", org, "-o", "json"],
                 capture_output=True,
@@ -238,117 +249,428 @@ class LLMMatcher:
                 logger.warning(f"chainctl img repos list failed: {result.stderr}")
                 return []
 
-            # Parse JSON output
             repos_data = json.loads(result.stdout)
             items = repos_data.get("items", [])
-
-            # Extract image names
-            all_images = [item.get("name", "") for item in items if item.get("name")]
-
-            # Fuzzy filter using search term
-            # Split search term into parts for flexible matching
-            search_parts = re.split(r"[-_\s]+", search_term.lower())
-
-            matching_images = []
-            for image in all_images:
-                image_lower = image.lower()
-                # Check if all search parts appear in the image name
-                if all(part in image_lower for part in search_parts if len(part) > 2):
-                    matching_images.append(image)
-
-            # Sort by relevance (shorter names that contain all terms rank higher)
-            matching_images.sort(key=lambda x: len(x))
-
-            logger.debug(f"Found {len(matching_images)} Chainguard images matching '{search_term}': {matching_images[:10]}")
-            return matching_images[:20]  # Limit to top 20 matches
+            all_images = sorted([item.get("name", "") for item in items if item.get("name")])
+            return all_images
 
         except subprocess.TimeoutExpired:
-            logger.warning("chainctl image search timed out")
+            logger.warning("chainctl catalog loading timed out")
             return []
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse chainctl output: {e}")
             return []
         except Exception as e:
-            logger.warning(f"chainctl image search failed: {e}")
+            logger.warning(f"chainctl catalog loading failed: {e}")
             return []
 
-    def _build_prompt(self, image_name: str) -> str:
+    def _web_search_image_context(self, image_name: str) -> str:
         """
-        Build matching prompt for Claude.
+        Search the web to understand what a source image does.
+
+        Args:
+            image_name: The source image name to research
+
+        Returns:
+            Context string describing what the image does
+        """
+        if not self.client:
+            return ""
+
+        # Extract the core image name for searching
+        search_name = image_name
+        if "/" in search_name:
+            search_name = search_name.split("/")[-1]
+        if ":" in search_name:
+            search_name = search_name.split(":")[0]
+
+        try:
+            # Use Claude with web search to understand what this image does
+            logger.debug(f"LLM web search for context on '{search_name}'")
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=500,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": f"""Research what the container image "{image_name}" does.
+
+Search the web to find information about this image - its purpose, what software it contains, and what problem it solves.
+
+Provide a concise summary (2-3 sentences) of:
+1. What this software/tool does
+2. Its primary use case
+3. Any alternative names or related projects
+
+If you cannot find information, say "Unknown image".""",
+                    }
+                ],
+            )
+            return response.content[0].text.strip()
+        except Exception as e:
+            logger.debug(f"Web search for {image_name} failed: {e}")
+            return ""
+
+    def _generate_hyphen_variations(self, name: str) -> list[str]:
+        """
+        Generate hyphen variations for concatenated names.
+
+        Examples:
+            argoexec → ['argo-exec']
+            registryphoton → ['registry-photon']
+            deviceplugin → ['device-plugin']
+
+        Args:
+            name: Image name to generate variations for
+
+        Returns:
+            List of hyphenated variations
+        """
+        variations = []
+
+        # Skip if already has hyphens/underscores
+        if "-" in name or "_" in name:
+            return variations
+
+        # Common word boundaries to try splitting on
+        # These are common suffixes/prefixes in container image names
+        split_words = [
+            "exec", "cli", "operator", "controller", "manager", "server",
+            "client", "proxy", "agent", "plugin", "exporter", "registry",
+            "photon", "base", "runtime", "sdk", "api", "web", "ui",
+            "db", "cache", "queue", "worker", "scheduler", "webhook",
+        ]
+
+        name_lower = name.lower()
+        for word in split_words:
+            # Try splitting at this word boundary
+            if word in name_lower and name_lower != word:
+                idx = name_lower.find(word)
+                if idx > 0:
+                    # Split: "argoexec" → "argo-exec"
+                    before = name[:idx]
+                    after = name[idx:]
+                    hyphenated = f"{before}-{after}".lower()
+                    if hyphenated not in variations:
+                        variations.append(hyphenated)
+
+        return variations
+
+    def _generate_search_terms(self, base_name: str, org_name: Optional[str] = None) -> list[str]:
+        """
+        Generate search terms for finding Chainguard image candidates.
+
+        Creates multiple variations of the image name to increase chances
+        of finding matches in the catalog.
+
+        Args:
+            base_name: Base image name (without registry/tag)
+            org_name: Organization name if available
+
+        Returns:
+            List of search terms to try
+        """
+        search_terms = [base_name]
+
+        # Add hyphen variations for concatenated names (argoexec → argo-exec)
+        hyphenated = self._generate_hyphen_variations(base_name)
+        search_terms.extend(hyphenated)
+
+        # Add individual words from the base name as search terms
+        words = re.split(r"[-_]+", base_name)
+        if len(words) > 1:
+            # Add the most significant words (usually not generic ones)
+            generic_words = ("manager", "controller", "server", "client", "k8s", "kubernetes")
+            significant_words = [w for w in words if w.lower() not in generic_words]
+            if significant_words:
+                search_terms.append(" ".join(significant_words[:2]))
+                # Also add individual significant words for broader search
+                for word in significant_words[:2]:
+                    if len(word) > 3:
+                        search_terms.append(word)
+
+        # Add org name as search term (argoproj → argo)
+        if org_name:
+            # Strip common suffixes like "proj", "io", "dev"
+            org_base = re.sub(r"(proj|io|dev|oss|images)$", "", org_name.lower())
+            if org_base and len(org_base) > 2:
+                search_terms.append(org_base)
+                # Also try org-base combination (e.g., "argo exec" for argoproj/argoexec)
+                search_terms.append(f"{org_base} {base_name}")
+
+        # Add common prefix substitutions for k8s images
+        if "k8s" in base_name.lower():
+            # k8s-device-plugin → device-plugin, nvidia-device-plugin
+            without_k8s = re.sub(r"k8s[-_]?", "", base_name, flags=re.IGNORECASE)
+            if without_k8s:
+                search_terms.append(without_k8s)
+                search_terms.append(f"nvidia {without_k8s}")
+
+        return search_terms
+
+    def _search_chainguard_images(self, search_term: str) -> list[str]:
+        """
+        Search for available Chainguard images in the pre-loaded catalog.
+
+        Args:
+            search_term: Term to fuzzy search for
+
+        Returns:
+            List of matching image names
+        """
+        if not self.chainguard_catalog:
+            logger.debug("No catalog available for image search")
+            return []
+
+        # Fuzzy filter using search term
+        # Split search term into parts for flexible matching
+        search_parts = re.split(r"[-_\s]+", search_term.lower())
+        # Also create a normalized version without hyphens for matching
+        search_normalized = re.sub(r"[-_\s]+", "", search_term.lower())
+
+        matching_images = []
+        for image in self.chainguard_catalog:
+            image_lower = image.lower()
+            image_normalized = re.sub(r"[-_]+", "", image_lower)
+
+            # Method 1: All search parts appear in the image name
+            if all(part in image_lower for part in search_parts if len(part) > 2):
+                matching_images.append(image)
+            # Method 2: Normalized search matches normalized image (handles hyphen variations)
+            # e.g., "argoexec" matches "argo-exec" → both normalize to "argoexec"
+            elif search_normalized in image_normalized or image_normalized in search_normalized:
+                matching_images.append(image)
+            # Method 3: Any significant search part matches (broader search)
+            elif any(part in image_lower for part in search_parts if len(part) > 4):
+                matching_images.append(image)
+
+        # Sort by relevance (prefer exact normalized matches, then shorter names)
+        def relevance_score(img):
+            img_normalized = re.sub(r"[-_]+", "", img.lower())
+            # Exact normalized match gets highest priority
+            if search_normalized == img_normalized:
+                return (0, len(img))
+            # Normalized substring match
+            if search_normalized in img_normalized:
+                return (1, len(img))
+            # Regular match
+            return (2, len(img))
+
+        matching_images.sort(key=relevance_score)
+
+        logger.debug(f"Found {len(matching_images)} Chainguard images matching '{search_term}': {matching_images[:10]}")
+        return matching_images[:20]  # Limit to top 20 matches
+
+    def _match_against_catalog(self, image_name: str, context: str = "") -> LLMMatchResult:
+        """
+        Match source image against the full Chainguard catalog.
+
+        Args:
+            image_name: Source image to match
+            context: Optional additional context about the source image
+
+        Returns:
+            LLMMatchResult with match and metadata
+        """
+        if not self.client:
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning="LLM client not available",
+            )
+
+        if not self.chainguard_catalog:
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning="Chainguard catalog not available",
+            )
+
+        start_time = time.time()
+        prompt = self._build_catalog_prompt(image_name, context=context)
+
+        try:
+            logger.debug(f"LLM catalog matching for '{image_name}' (model: {self.model})")
+            message = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            latency_ms = (time.time() - start_time) * 1000
+            response_text = self._parse_json_response(message.content[0].text)
+            response = json.loads(response_text)
+
+            # Validate the suggested image is in the catalog
+            suggested = response.get("chainguard_image")
+            if suggested:
+                # Extract just the image name
+                img_name = suggested
+                if "/" in img_name:
+                    img_name = img_name.split("/")[-1]
+                if ":" in img_name:
+                    img_name = img_name.split(":")[0]
+
+                if img_name not in self.chainguard_catalog:
+                    logger.warning(f"LLM suggested '{img_name}' which is not in catalog - rejecting")
+                    return LLMMatchResult(
+                        chainguard_image=None,
+                        confidence=0.0,
+                        reasoning=f"Suggested image '{img_name}' not in catalog",
+                        latency_ms=latency_ms,
+                    )
+
+            return LLMMatchResult(
+                chainguard_image=response.get("chainguard_image"),
+                confidence=response.get("confidence", 0.0),
+                reasoning=response.get("reasoning", ""),
+                latency_ms=latency_ms,
+            )
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse LLM response: {e}")
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning=f"JSON parse error: {e}",
+            )
+        except Exception as e:
+            logger.warning(f"Catalog matching failed: {e}")
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning=f"Error: {e}",
+            )
+
+    def _iterative_refinement(self, image_name: str) -> LLMMatchResult:
+        """
+        Iterative refinement for hard-to-match images.
+
+        Uses multiple search strategies to gather more context and find matches.
+
+        Args:
+            image_name: Source image to match
+
+        Returns:
+            LLMMatchResult with match and metadata
+        """
+        if not self.client:
+            return LLMMatchResult(
+                chainguard_image=None,
+                confidence=0.0,
+                reasoning="LLM client not available",
+            )
+
+        # Try to understand the image through a more detailed search
+        prompt = f"""I need to find a Chainguard equivalent for the container image: {image_name}
+
+Please help me understand:
+1. What is this software/tool? What does it do?
+2. What is the upstream project or organization?
+3. Are there any alternative names or related projects?
+4. What category does this fall into (database, web server, CI/CD tool, monitoring, etc.)?
+
+Search the web if needed to find accurate information. Be concise."""
+
+        try:
+            logger.debug(f"LLM iterative refinement research for '{image_name}'")
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=500,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            detailed_context = response.content[0].text.strip()
+
+            # Now try matching with this detailed context
+            if detailed_context:
+                return self._match_against_catalog(image_name, context=detailed_context)
+
+        except Exception as e:
+            logger.debug(f"Iterative refinement failed: {e}")
+
+        return LLMMatchResult(
+            chainguard_image=None,
+            confidence=0.0,
+            reasoning="No match found after iterative refinement",
+        )
+
+    def _parse_json_response(self, response_text: str) -> str:
+        """Parse JSON from LLM response, handling markdown code blocks."""
+        response_text = response_text.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        return response_text.strip()
+
+    def _build_catalog_prompt(self, image_name: str, context: str = "") -> str:
+        """
+        Build matching prompt with full catalog for Claude.
 
         Args:
             image_name: Image name to match
+            context: Optional additional context about the source image
 
         Returns:
             Formatted prompt string
         """
+        # Format catalog as a list
+        if self.chainguard_catalog:
+            catalog_str = "\n".join(f"  - {img}" for img in self.chainguard_catalog)
+        else:
+            catalog_str = "  (catalog not available)"
+
+        context_section = ""
+        if context:
+            context_section = f"""
+**Additional context about the source image:**
+{context}
+"""
+
         prompt = f"""You are an expert at matching container images to their Chainguard equivalents.
 
-Your task is to find the best Chainguard image match for the following image:
 **Image to match:** {image_name}
+{context_section}
+**Available Chainguard images (complete catalog):**
+{catalog_str}
 
-**CRITICAL: Do NOT hallucinate or invent image names. Only suggest images that you are highly confident actually exist in the Chainguard registry. If you are not confident that a specific Chainguard image exists, return null with low confidence rather than guessing.**
+**Your task:**
+1. Understand what software/tool the source image provides
+2. Find the best matching image from the catalog above
+3. Only select an image if you're confident it provides the same or equivalent functionality
 
-**Guidelines:**
-
-1. **OS Images Rule (CRITICAL)**: If the image is a base OS image (debian, ubuntu, rhel, centos, alpine-base, almalinux, rocky, etc.), it should ALWAYS map to `cgr.dev/chainguard-private/chainguard-base:latest` with high confidence (0.9+).
-
-2. **Only Common/Popular Images**: Chainguard primarily provides images for popular, widely-used software:
-   - Languages: python, node, go, java, ruby, php
-   - Databases: postgres, mysql, redis, mongodb
-   - Web servers: nginx, apache (httpd)
-   - Infrastructure: prometheus, grafana, jenkins, git
-   - Kubernetes: kubectl, helm, kube-state-metrics
-   - If the image is obscure, niche, or very specialized (like jmeter, selenium, custom tools), return null with confidence 0.0
-
-3. **Naming Patterns:**
-   - Strip registry prefixes (docker.io, gcr.io, ghcr.io, quay.io, etc.)
-   - Strip organization/vendor prefixes (library, bitnami, etc.)
-   - Extract base application name (postgres, nginx, python, etc.)
-
-4. **FIPS Variants:**
-   - If input has "-fips" or "_fips" suffix, prefer Chainguard FIPS variants
-   - FIPS images are in the private registry: `cgr.dev/chainguard-private/IMAGE-fips:latest`
-
-5. **Bitnami Images:**
-   - Bitnami images often have Chainguard "iamguarded" equivalents
-   - Example: bitnami/postgresql → cgr.dev/chainguard-private/postgresql-iamguarded:latest
-
-6. **Complex Paths:**
-   - For multi-component paths (e.g., kyverno/background-controller), try hyphenated variants
-   - Example: ghcr.io/kyverno/background-controller → cgr.dev/chainguard-private/kyverno-background-controller:latest
-
-7. **Registry Selection:**
-   - Use `cgr.dev/chainguard/IMAGE:latest` for free/community images
-   - Use `cgr.dev/chainguard-private/IMAGE:latest` for enterprise/commercial images
-   - When uncertain, prefer chainguard-private (most enterprise workloads)
-
-8. **Common Variations:**
-   - mongo → mongodb
-   - postgres → postgresql
-   - node-chrome → node-chromium
+**Key matching principles:**
+- Base OS images (debian, ubuntu, alpine, centos, rhel) → chainguard-base
+- Look for functional equivalents, not just name matches
+- Bitnami images often map to "-iamguarded" variants
+- FIPS variants end with "-fips"
+- Some images have different names (e.g., postgres-exporter → prometheus-postgres-exporter)
 
 **Output Format (JSON):**
 {{
   "chainguard_image": "cgr.dev/chainguard-private/IMAGE:latest",
   "confidence": 0.85,
-  "reasoning": "Brief explanation of why this match makes sense"
+  "reasoning": "Brief explanation of the match"
 }}
 
 **Confidence Scoring:**
-- 0.9-1.0: Very high confidence (exact match, known pattern)
-- 0.8-0.89: High confidence (strong heuristic match)
-- 0.7-0.79: Medium confidence (reasonable guess based on patterns)
-- 0.0-0.69: Low confidence (uncertain, should not be used)
+- 0.9+: Direct equivalent (same software, same purpose)
+- 0.8-0.89: Strong functional match
+- 0.7-0.79: Reasonable match with some uncertainty
+- Below 0.7: Return null
 
-If you cannot find a reasonable match (confidence < 0.7), return:
+If no suitable match exists in the catalog, return:
 {{
   "chainguard_image": null,
   "confidence": 0.0,
-  "reasoning": "Explanation of why no match was found"
+  "reasoning": "Why no match exists"
 }}
 
-Respond with ONLY the JSON output, no additional text."""
+**CRITICAL:** You MUST select from the catalog above. Do not invent image names.
+
+Respond with ONLY the JSON output."""
 
         return prompt
 
@@ -377,25 +699,19 @@ Respond with ONLY the JSON output, no additional text."""
 
         start_time = time.time()
 
-        # Extract base name for searching
+        # Extract base name and org for searching
         base_name = image_name
+        org_name = None
         if "/" in base_name:
-            base_name = base_name.split("/")[-1]
+            parts = base_name.split("/")
+            if len(parts) >= 2:
+                org_name = parts[-2]  # e.g., "argoproj" from "argoproj/argoexec"
+            base_name = parts[-1]
         if ":" in base_name:
             base_name = base_name.split(":")[0]
 
-        # Search for candidate Chainguard images
-        # Try multiple search terms to increase chances of finding matches
-        search_terms = [base_name]
-
-        # Add individual words from the base name as search terms
-        words = re.split(r"[-_]+", base_name)
-        if len(words) > 1:
-            # Add the most significant words (usually not generic ones like "manager", "controller")
-            significant_words = [w for w in words if w.lower() not in ("manager", "controller", "server", "client")]
-            if significant_words:
-                search_terms.append(" ".join(significant_words[:2]))
-
+        # Search for candidate Chainguard images using generated search terms
+        search_terms = self._generate_search_terms(base_name, org_name)
         candidate_images = set()
         for term in search_terms:
             candidates = self._search_chainguard_images(term)
@@ -448,6 +764,7 @@ IMPORTANT: You MUST choose from the available images list above. Do NOT suggest 
 Respond with ONLY the JSON output, no additional text."""
 
         try:
+            logger.debug(f"LLM enhanced matching for '{image_name}' with {len(candidate_list)} candidates")
             message = self.client.messages.create(
                 model=self.model,
                 max_tokens=1024,
@@ -468,15 +785,8 @@ Respond with ONLY the JSON output, no additional text."""
                     latency_ms=latency_ms,
                 )
 
-            # Remove markdown code blocks if present
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.startswith("```"):
-                response_text = response_text[3:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-            response_text = response_text.strip()
-
+            # Parse JSON from response, handling markdown code blocks
+            response_text = self._parse_json_response(response_text)
             response = json.loads(response_text)
 
             result = LLMMatchResult(
@@ -526,7 +836,12 @@ Respond with ONLY the JSON output, no additional text."""
 
     def match(self, image_name: str) -> LLMMatchResult:
         """
-        Find Chainguard image match using LLM.
+        Find Chainguard image match using LLM with full catalog.
+
+        Uses a 3-tier matching approach:
+        1. Match against full catalog with LLM understanding
+        2. If no match, use web search to understand the source image better
+        3. If still no match, iterative refinement with additional context
 
         Args:
             image_name: Source image to match
@@ -551,96 +866,59 @@ Respond with ONLY the JSON output, no additional text."""
             )
             return cached_result
 
-        # Call Claude API
         start_time = time.time()
         try:
-            prompt = self._build_prompt(image_name)
+            # TIER 1: Match against full catalog
+            result = self._match_against_catalog(image_name)
 
-            message = self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            if result.confidence >= self.confidence_threshold:
+                logger.info(
+                    f"Catalog match for {image_name}: {result.chainguard_image} "
+                    f"(confidence: {result.confidence:.0%})"
+                )
+                self._cache_result(image_name, result.chainguard_image, result.confidence, result.reasoning)
+                self._log_telemetry(image_name, result, True)
+                return result
+
+            # TIER 2: Web search to understand the source image
+            logger.info(f"No direct match for {image_name}, searching for context...")
+            context = self._web_search_image_context(image_name)
+
+            if context and context != "Unknown image":
+                logger.debug(f"Found context for {image_name}: {context[:100]}...")
+                result = self._match_against_catalog(image_name, context=context)
+
+                if result.confidence >= self.confidence_threshold:
+                    logger.info(
+                        f"Context-enhanced match for {image_name}: {result.chainguard_image} "
+                        f"(confidence: {result.confidence:.0%})"
+                    )
+                    result = LLMMatchResult(
+                        chainguard_image=result.chainguard_image,
+                        confidence=result.confidence,
+                        reasoning=f"[web-search] {result.reasoning}",
+                        cached=False,
+                        latency_ms=(time.time() - start_time) * 1000,
+                    )
+                    self._cache_result(image_name, result.chainguard_image, result.confidence, result.reasoning)
+                    self._log_telemetry(image_name, result, True)
+                    return result
+
+            # TIER 3: Iterative refinement - try broader search
+            logger.info(f"No match with context for {image_name}, trying iterative refinement...")
+            result = self._iterative_refinement(image_name)
 
             latency_ms = (time.time() - start_time) * 1000
-
-            # Parse JSON response
-            response_text = message.content[0].text.strip()
-
-            # Remove markdown code blocks if present
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]  # Remove ```json
-            if response_text.startswith("```"):
-                response_text = response_text[3:]  # Remove ```
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]  # Remove closing ```
-            response_text = response_text.strip()
-
-            response = json.loads(response_text)
-
             result = LLMMatchResult(
-                chainguard_image=response.get("chainguard_image"),
-                confidence=response.get("confidence", 0.0),
-                reasoning=response.get("reasoning", ""),
+                chainguard_image=result.chainguard_image,
+                confidence=result.confidence,
+                reasoning=result.reasoning,
                 cached=False,
                 latency_ms=latency_ms,
             )
 
-            logger.info(
-                f"LLM match for {image_name}: {result.chainguard_image} "
-                f"(confidence: {result.confidence:.0%}, latency: {latency_ms:.0f}ms)"
-            )
-
-            # Verify the suggested image actually exists
-            needs_enhanced = result.confidence < self.confidence_threshold
-            simple_match_invalid = False
-
-            if result.chainguard_image and result.confidence >= self.confidence_threshold:
-                # Extract image name from full reference for verification
-                suggested_name = result.chainguard_image
-                if "/" in suggested_name:
-                    suggested_name = suggested_name.split("/")[-1]
-                if ":" in suggested_name:
-                    suggested_name = suggested_name.split(":")[0]
-
-                # Check if image exists via chainctl
-                available_images = self._search_chainguard_images(suggested_name)
-                if not any(suggested_name == img or suggested_name in img for img in available_images):
-                    logger.warning(
-                        f"Simple match suggested '{suggested_name}' but it doesn't appear to exist in Chainguard registry"
-                    )
-                    needs_enhanced = True
-                    simple_match_invalid = True  # Mark as invalid so we prefer enhanced result
-
-            # If simple match failed, has low confidence, or suggested non-existent image, try enhanced matching
-            if needs_enhanced:
-                logger.info(
-                    f"Simple LLM match needs enhancement (confidence: {result.confidence:.0%}, "
-                    f"threshold: {self.confidence_threshold:.0%}), trying enhanced matching..."
-                )
-                enhanced_result = self._enhanced_match(image_name)
-
-                # Use enhanced result if it's better OR if simple match was invalid (non-existent image)
-                if enhanced_result.confidence > result.confidence or (
-                    simple_match_invalid and enhanced_result.confidence >= self.confidence_threshold
-                ):
-                    logger.info(
-                        f"Using enhanced match: {enhanced_result.chainguard_image} "
-                        f"(confidence: {enhanced_result.confidence:.0%})"
-                    )
-                    result = enhanced_result
-                else:
-                    # Cache the original result since enhanced didn't help
-                    self._cache_result(
-                        image_name, result.chainguard_image, result.confidence, result.reasoning
-                    )
-            else:
-                # Cache the successful simple result
-                self._cache_result(
-                    image_name, result.chainguard_image, result.confidence, result.reasoning
-                )
-
-            # Log telemetry
+            # Cache and log final result
+            self._cache_result(image_name, result.chainguard_image, result.confidence, result.reasoning)
             success = result.confidence >= self.confidence_threshold
             self._log_telemetry(image_name, result, success)
 

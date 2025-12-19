@@ -571,7 +571,13 @@ class Tier3HeuristicMatcher(TierMatcher):
 
 
 class Tier4LLMMatcher(TierMatcher):
-    """Tier 4: LLM-Powered Fuzzy Matching - 70%+ confidence."""
+    """Tier 4: LLM-Powered Fuzzy Matching with full catalog.
+
+    The LLM matcher now handles:
+    1. Matching against full Chainguard catalog (no hallucination)
+    2. Web search for understanding source images
+    3. Iterative refinement for hard cases
+    """
 
     def __init__(self, llm_matcher, github_token: Optional[str] = None):
         """
@@ -579,100 +585,60 @@ class Tier4LLMMatcher(TierMatcher):
 
         Args:
             llm_matcher: Configured LLMMatcher instance
-            github_token: GitHub token for image verification
+            github_token: GitHub token for image verification (kept for compatibility)
         """
         self.llm_matcher = llm_matcher
         self.image_verifier = ImageVerificationService(github_token=github_token)
 
     def match(self, image: str) -> Optional[MatchResult]:
-        """Match using LLM fuzzy matching."""
+        """Match using LLM with full catalog matching.
+
+        The LLM matcher validates against the catalog internally,
+        but we also verify as a defense-in-depth measure.
+        """
         if not self.llm_matcher:
             return None
 
         llm_result = self.llm_matcher.match(image)
-        if llm_result.chainguard_image and llm_result.confidence >= self.llm_matcher.confidence_threshold:
-            # Verify the LLM-suggested image actually exists (try aliases first)
-            verified_image, exists = self._verify_with_aliases(llm_result.chainguard_image)
-            if exists:
-                logger.debug(
-                    f"LLM match found and verified for {image}: {verified_image} "
-                    f"(confidence: {llm_result.confidence:.0%})"
-                )
-                return MatchResult(
-                    chainguard_image=verified_image,
-                    confidence=llm_result.confidence,
-                    method="llm",
-                    reasoning=llm_result.reasoning,
-                )
-            else:
-                logger.warning(
-                    f"LLM suggested {llm_result.chainguard_image} for {image}, "
-                    f"but image does not exist (hallucination)"
-                )
 
-        return None
+        # Check if we got a valid match
+        if not llm_result.chainguard_image:
+            return None
 
-    def _get_image_name_aliases(self, image_name: str) -> list[str]:
-        """Get common aliases for an image name."""
-        aliases = [image_name]
+        if llm_result.confidence < self.llm_matcher.confidence_threshold:
+            logger.debug(
+                f"LLM match for {image} below threshold: {llm_result.confidence:.0%}"
+            )
+            return None
 
-        # Common name variations
-        name_mappings = {
-            'postgresql': 'postgres',
-            'postgres': 'postgresql',
-            'nodejs': 'node',
-            'node-js': 'node',
-        }
+        # Convert public registry to private if needed
+        chainguard_image = llm_result.chainguard_image
+        if chainguard_image.startswith(f"{CHAINGUARD_PUBLIC_REGISTRY}/"):
+            chainguard_image = chainguard_image.replace(
+                f"{CHAINGUARD_PUBLIC_REGISTRY}/",
+                f"{CHAINGUARD_PRIVATE_REGISTRY}/",
+                1
+            )
 
-        # Check for exact mappings
-        if image_name in name_mappings:
-            aliases.append(name_mappings[image_name])
+        # Defense-in-depth: verify the image exists even though LLM should
+        # have validated against the catalog
+        if not self._verify_image_exists(chainguard_image):
+            logger.warning(
+                f"LLM suggested non-existent image for {image}: {chainguard_image}"
+            )
+            return None
 
-        # Check for name with suffix (e.g., postgresql-iamguarded → postgres-iamguarded)
-        for old, new in name_mappings.items():
-            if image_name.startswith(old + '-'):
-                aliases.append(image_name.replace(old, new, 1))
-            if image_name.startswith(new + '-'):
-                aliases.append(image_name.replace(new, old, 1))
+        logger.debug(
+            f"LLM match for {image}: {chainguard_image} "
+            f"(confidence: {llm_result.confidence:.0%})"
+        )
 
-        return list(set(aliases))  # Remove duplicates
-
-    def _verify_with_aliases(self, image: str) -> tuple[str, bool]:
-        """
-        Verify if image exists, trying common name aliases.
-
-        Returns:
-            Tuple of (verified_image_name, exists)
-        """
-        # Try the original image first
-        if self._verify_image_exists(image):
-            return (image, True)
-
-        # Extract components to try aliases
-        if image.startswith(f"{CHAINGUARD_PRIVATE_REGISTRY}/") or image.startswith(f"{CHAINGUARD_PUBLIC_REGISTRY}/"):
-            parts = image.split("/")
-            if len(parts) >= 3:
-                registry = "/".join(parts[:2])
-                image_with_tag = parts[2]
-
-                # Split image name and tag
-                if ":" in image_with_tag:
-                    image_name, tag = image_with_tag.rsplit(":", 1)
-                else:
-                    image_name, tag = image_with_tag, "latest"
-
-                # Try each alias
-                for alias in self._get_image_name_aliases(image_name):
-                    if alias == image_name:
-                        continue  # Already tried
-
-                    aliased_image = f"{registry}/{alias}:{tag}"
-                    logger.debug(f"Trying alias: {aliased_image}")
-                    if self._verify_image_exists(aliased_image):
-                        logger.info(f"Found image using alias: {image} → {aliased_image}")
-                        return (aliased_image, True)
-
-        return (image, False)
+        return MatchResult(
+            chainguard_image=chainguard_image,
+            confidence=llm_result.confidence,
+            method="llm",
+            reasoning=llm_result.reasoning,
+        )
 
     def _verify_image_exists(self, image: str) -> bool:
         """Verify if Chainguard image exists."""

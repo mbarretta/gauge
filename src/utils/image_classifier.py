@@ -13,6 +13,7 @@ import yaml
 
 from core.models import ImageTier
 from integrations.github_metadata import GitHubMetadataClient
+from utils.image_utils import extract_base_name
 
 logger = logging.getLogger(__name__)
 
@@ -107,16 +108,7 @@ class ImageClassifier:
         Returns:
             Base image name (e.g., "python")
         """
-        # Remove registry and org prefix
-        if "/" in image:
-            image = image.split("/")[-1]
-        # Remove tag
-        if ":" in image:
-            image = image.split(":")[0]
-        # Remove digest
-        if "@" in image:
-            image = image.split("@")[0]
-        return image
+        return extract_base_name(image)
 
     def get_image_tier(self, image: str) -> ImageTier:
         """

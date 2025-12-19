@@ -29,15 +29,25 @@ class TestLLMMatcher:
         return mock_client
 
     @pytest.fixture
-    def llm_matcher(self, tmp_path, mock_anthropic_client):
-        """Create LLMMatcher with mocked API client."""
+    def mock_catalog(self):
+        """Mock Chainguard catalog for testing."""
+        return [
+            "redis", "nginx", "python", "node", "postgres", "mysql",
+            "chainguard-base", "go", "java", "alpine-base", "wolfi-base",
+            "prometheus-postgres-exporter", "kyverno-background-controller",
+        ]
+
+    @pytest.fixture
+    def llm_matcher(self, tmp_path, mock_anthropic_client, mock_catalog):
+        """Create LLMMatcher with mocked API client and catalog."""
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_anthropic_client):
-            matcher = LLMMatcher(
-                api_key="test-key",
-                model="claude-sonnet-4-5",
-                cache_dir=tmp_path,
-                confidence_threshold=0.7,
-            )
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher = LLMMatcher(
+                    api_key="test-key",
+                    model="claude-sonnet-4-5",
+                    cache_dir=tmp_path,
+                    confidence_threshold=0.7,
+                )
         return matcher
 
     def test_llm_match_success(self, llm_matcher, mock_anthropic_client):
@@ -65,7 +75,7 @@ class TestLLMMatcher:
         # API should not be called again
         assert mock_anthropic_client.messages.create.call_count == 1
 
-    def test_llm_match_no_match(self, tmp_path):
+    def test_llm_match_no_match(self, tmp_path, mock_catalog):
         """Test LLM matching when no match is found."""
         mock_client = Mock()
         mock_message = Mock()
@@ -79,18 +89,19 @@ class TestLLMMatcher:
         mock_client.messages.create.return_value = mock_message
 
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_client):
-            matcher = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-            )
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                )
 
-            result = matcher.match("internal.registry.com/custom-app:v1.0")
+                result = matcher.match("internal.registry.com/custom-app:v1.0")
 
-            assert result.chainguard_image is None
-            assert result.confidence == 0.0
-            assert "Could not find" in result.reasoning
+                assert result.chainguard_image is None
+                assert result.confidence == 0.0
+                assert "Could not find" in result.reasoning
 
-    def test_llm_match_below_threshold(self, tmp_path):
+    def test_llm_match_below_threshold(self, tmp_path, mock_catalog):
         """Test LLM matching when confidence is below threshold."""
         mock_client = Mock()
         mock_message = Mock()
@@ -104,36 +115,40 @@ class TestLLMMatcher:
         mock_client.messages.create.return_value = mock_message
 
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_client):
-            matcher = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-                confidence_threshold=0.7,
-            )
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                    confidence_threshold=0.7,
+                )
 
-            result = matcher.match("some-ambiguous-image:latest")
+                result = matcher.match("some-ambiguous-image:latest")
 
-            # Result should be returned but with low confidence
-            assert result.chainguard_image == "cgr.dev/chainguard-private/nginx:latest"
-            assert result.confidence == 0.6
+                # Result should be returned but with low confidence
+                assert result.chainguard_image == "cgr.dev/chainguard-private/nginx:latest"
+                assert result.confidence == 0.6
 
-    def test_llm_match_api_error(self, tmp_path):
+    def test_llm_match_api_error(self, tmp_path, mock_catalog):
         """Test LLM matching when API call fails."""
         mock_client = Mock()
         mock_client.messages.create.side_effect = Exception("API error")
 
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_client):
-            matcher = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-            )
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                )
 
-            result = matcher.match("redis:latest")
+                result = matcher.match("redis:latest")
 
-            assert result.chainguard_image is None
-            assert result.confidence == 0.0
-            assert "Error" in result.reasoning
+                assert result.chainguard_image is None
+                assert result.confidence == 0.0
+                # With 3-tier matching, API errors in tier 1 cause fallback to tiers 2 & 3
+                # Final result may have "Error" from API or "No match" from final tier
+                assert "Error" in result.reasoning or "No match" in result.reasoning
 
-    def test_llm_match_json_parse_error(self, tmp_path):
+    def test_llm_match_json_parse_error(self, tmp_path, mock_catalog):
         """Test LLM matching when response is not valid JSON."""
         mock_client = Mock()
         mock_message = Mock()
@@ -143,16 +158,17 @@ class TestLLMMatcher:
         mock_client.messages.create.return_value = mock_message
 
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_client):
-            matcher = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-            )
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                )
 
-            result = matcher.match("redis:latest")
+                result = matcher.match("redis:latest")
 
-            assert result.chainguard_image is None
-            assert result.confidence == 0.0
-            assert "JSON" in result.reasoning or "parse" in result.reasoning
+                assert result.chainguard_image is None
+                assert result.confidence == 0.0
+                assert "JSON" in result.reasoning or "parse" in result.reasoning
 
     def test_llm_match_no_api_key(self, tmp_path):
         """Test LLM matching when no API key is provided."""
@@ -178,7 +194,7 @@ class TestLLMMatcher:
     def test_llm_match_os_image_rule(self, llm_matcher):
         """Test that OS images are suggested to map to chainguard-base."""
         # The prompt should include the OS images → chainguard-base rule
-        prompt = llm_matcher._build_prompt("ubuntu:22.04")
+        prompt = llm_matcher._build_catalog_prompt("ubuntu:22.04")
 
         assert "chainguard-base" in prompt.lower()
         assert "debian" in prompt.lower()
@@ -187,7 +203,7 @@ class TestLLMMatcher:
 
     def test_llm_match_prompt_building(self, llm_matcher):
         """Test prompt building includes all necessary guidelines."""
-        prompt = llm_matcher._build_prompt("ghcr.io/kyverno/background-controller:v1.10.3")
+        prompt = llm_matcher._build_catalog_prompt("ghcr.io/kyverno/background-controller:v1.10.3")
 
         # Check for key prompt elements
         assert "kyverno/background-controller" in prompt
@@ -197,7 +213,7 @@ class TestLLMMatcher:
         assert "confidence" in prompt.lower()
         assert "JSON" in prompt
 
-    def test_llm_match_strips_markdown_code_blocks(self, tmp_path):
+    def test_llm_match_strips_markdown_code_blocks(self, tmp_path, mock_catalog):
         """Test that markdown code blocks are stripped from responses."""
         mock_client = Mock()
         mock_message = Mock()
@@ -214,15 +230,16 @@ class TestLLMMatcher:
         mock_client.messages.create.return_value = mock_message
 
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_client):
-            matcher = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-            )
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                )
 
-            result = matcher.match("python:3.12")
+                result = matcher.match("python:3.12")
 
-            assert result.chainguard_image == "cgr.dev/chainguard-private/python:latest"
-            assert result.confidence == 0.9
+                assert result.chainguard_image == "cgr.dev/chainguard-private/python:latest"
+                assert result.confidence == 0.9
 
     def test_llm_match_telemetry_logging(self, llm_matcher, tmp_path):
         """Test that telemetry is logged correctly."""
@@ -244,49 +261,53 @@ class TestLLMMatcher:
         assert "success" in telemetry
         assert "latency_ms" in telemetry
 
-    def test_llm_match_cache_persistence(self, tmp_path, mock_anthropic_client):
+    def test_llm_match_cache_persistence(self, tmp_path, mock_anthropic_client, mock_catalog):
         """Test that cache persists across matcher instances."""
         # First matcher instance
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_anthropic_client):
-            matcher1 = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-            )
-            result1 = matcher1.match("redis:latest")
-            assert not result1.cached
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher1 = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                )
+                result1 = matcher1.match("redis:latest")
+                assert not result1.cached
 
         # Second matcher instance (new object, same cache dir)
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_anthropic_client):
-            matcher2 = LLMMatcher(
-                api_key="test-key",
-                cache_dir=tmp_path,
-            )
-            result2 = matcher2.match("redis:latest")
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher2 = LLMMatcher(
+                    api_key="test-key",
+                    cache_dir=tmp_path,
+                )
+                result2 = matcher2.match("redis:latest")
 
-            # Should be cached from previous matcher
-            assert result2.cached
-            assert result2.chainguard_image == result1.chainguard_image
+                # Should be cached from previous matcher
+                assert result2.cached
+                assert result2.chainguard_image == result1.chainguard_image
 
-    def test_llm_match_different_models_separate_cache(self, tmp_path, mock_anthropic_client):
+    def test_llm_match_different_models_separate_cache(self, tmp_path, mock_anthropic_client, mock_catalog):
         """Test that different models have separate cache entries."""
         # First matcher with sonnet model
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_anthropic_client):
-            matcher1 = LLMMatcher(
-                api_key="test-key",
-                model="claude-sonnet-4-5",
-                cache_dir=tmp_path,
-            )
-            result1 = matcher1.match("redis:latest")
-            assert not result1.cached
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher1 = LLMMatcher(
+                    api_key="test-key",
+                    model="claude-sonnet-4-5",
+                    cache_dir=tmp_path,
+                )
+                result1 = matcher1.match("redis:latest")
+                assert not result1.cached
 
         # Second matcher with haiku model
         with patch('utils.llm_matcher.anthropic.Anthropic', return_value=mock_anthropic_client):
-            matcher2 = LLMMatcher(
-                api_key="test-key",
-                model="claude-haiku-4-5",
-                cache_dir=tmp_path,
-            )
-            result2 = matcher2.match("redis:latest")
+            with patch.object(LLMMatcher, '_load_full_catalog', return_value=mock_catalog):
+                matcher2 = LLMMatcher(
+                    api_key="test-key",
+                    model="claude-haiku-4-5",
+                    cache_dir=tmp_path,
+                )
+                result2 = matcher2.match("redis:latest")
 
-            # Should NOT be cached because model is different
-            assert not result2.cached
+                # Should NOT be cached because model is different
+                assert not result2.cached

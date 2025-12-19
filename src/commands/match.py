@@ -229,6 +229,14 @@ def match_images(
         for method, count in sorted(method_counts.items()):
             logger.info(f"  {method}: {count} ({count / len(matched_pairs) * 100:.1f}%)")
 
+    # Display successful matches
+    if matched_pairs:
+        matches_list = "\n".join(
+            f"  {alt_image} ⇒ {result.chainguard_image}"
+            for alt_image, result in matched_pairs
+        )
+        logger.info(f"\nSuccessful matches:\n{matches_list}")
+
     logger.info("=" * 60)
 
     return matched_pairs, unmatched_images

@@ -56,7 +56,7 @@ packages:
 
         # Exact match
         match = dfc.match_image("alpine:latest")
-        assert match == "cgr.dev/chainguard/chainguard-base:latest"
+        assert match == "cgr.dev/chainguard-private/chainguard-base:latest"
 
     def test_wildcard_match(self, tmp_path, mock_dfc_yaml):
         """Test wildcard pattern matching."""
@@ -67,9 +67,9 @@ packages:
         dfc.load_mappings()
 
         # Wildcard matches
-        assert dfc.match_image("golang:1.21") == "cgr.dev/chainguard/go:latest"
-        assert dfc.match_image("python:3.12") == "cgr.dev/chainguard/python:latest"
-        assert dfc.match_image("node:20") == "cgr.dev/chainguard/node:latest"
+        assert dfc.match_image("golang:1.21") == "cgr.dev/chainguard-private/go:latest"
+        assert dfc.match_image("python:3.12") == "cgr.dev/chainguard-private/python:latest"
+        assert dfc.match_image("node:20") == "cgr.dev/chainguard-private/node:latest"
 
     def test_no_match(self, tmp_path, mock_dfc_yaml):
         """Test when no match is found."""
@@ -91,12 +91,13 @@ packages:
 
     def test_normalize_chainguard_image(self, dfc_mappings):
         """Test Chainguard image normalization."""
-        # Already has registry
+        # Already has registry (preserve existing registry)
         assert dfc_mappings._normalize_chainguard_image("cgr.dev/chainguard/python:latest") == "cgr.dev/chainguard/python:latest"
+        assert dfc_mappings._normalize_chainguard_image("cgr.dev/chainguard-private/python:latest") == "cgr.dev/chainguard-private/python:latest"
 
-        # Missing registry
-        assert dfc_mappings._normalize_chainguard_image("go") == "cgr.dev/chainguard/go:latest"
-        assert dfc_mappings._normalize_chainguard_image("nginx-fips:latest") == "cgr.dev/chainguard/nginx-fips:latest"
+        # Missing registry - defaults to private registry
+        assert dfc_mappings._normalize_chainguard_image("go") == "cgr.dev/chainguard-private/go:latest"
+        assert dfc_mappings._normalize_chainguard_image("nginx-fips:latest") == "cgr.dev/chainguard-private/nginx-fips:latest"
 
     def test_cache_needs_refresh_no_cache(self, dfc_mappings):
         """Test cache refresh when cache doesn't exist."""

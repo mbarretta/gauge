@@ -371,6 +371,13 @@ class GaugeOrchestrator:
         if unmatched:
             unmatched_list = "\n".join(f"  - {img}" for img in unmatched)
             logger.warning(f"\n{len(unmatched)} images could not be auto-matched:\n{unmatched_list}\n")
+        # Display successful matches summary
+        if pairs:
+            matches_list = "\n".join(
+                f"  {pair.alternative_image} ⇒ {pair.chainguard_image}"
+                for pair in pairs
+            )
+            logger.info(f"\nSuccessful matches:\n{matches_list}")
         return pairs, unmatched
 
     def _execute_scans(self) -> list:

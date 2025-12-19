@@ -17,6 +17,7 @@ import yaml
 
 from constants import DFC_CONTRIBUTION_THRESHOLD
 from utils.image_matcher import MatchResult
+from utils.image_utils import extract_base_name
 
 logger = logging.getLogger(__name__)
 
@@ -276,20 +277,7 @@ class DFCContributor:
             ghcr.io/kyverno/background-controller:v1.10.3 → background-controller
             nginx:1.25 → nginx
         """
-        # Remove registry
-        if "/" in image:
-            parts = image.split("/")
-            image = parts[-1]
-
-        # Remove tag
-        if ":" in image:
-            image = image.split(":")[0]
-
-        # Remove digest
-        if "@" in image:
-            image = image.split("@")[0]
-
-        return image.lower()
+        return extract_base_name(image)
 
     def _extract_cg_name(self, cg_image: str) -> str:
         """
@@ -299,23 +287,7 @@ class DFCContributor:
             cgr.dev/chainguard/python:latest → python
             cgr.dev/chainguard-private/nginx-fips:latest → nginx-fips
         """
-        # Remove registry prefix
-        if "cgr.dev/chainguard/" in cg_image:
-            image = cg_image.replace("cgr.dev/chainguard/", "")
-        elif "cgr.dev/chainguard-private/" in cg_image:
-            image = cg_image.replace("cgr.dev/chainguard-private/", "")
-        else:
-            image = cg_image
-
-        # Remove tag
-        if ":" in image:
-            image = image.split(":")[0]
-
-        # Remove digest
-        if "@" in image:
-            image = image.split("@")[0]
-
-        return image
+        return extract_base_name(cg_image)
 
     def generate_all(self, dfc_repo_path: Optional[Path] = None) -> dict[str, Path]:
         """

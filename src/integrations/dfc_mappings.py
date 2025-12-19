@@ -14,6 +14,8 @@ from typing import Optional
 import requests
 import yaml
 
+from constants import CHAINGUARD_PRIVATE_REGISTRY
+
 logger = logging.getLogger(__name__)
 
 # DFC builtin-mappings.yaml URL
@@ -226,9 +228,9 @@ class DFCMappings:
         Normalize Chainguard image reference to full format.
 
         Examples:
-            go → cgr.dev/chainguard/go:latest
-            nginx-fips → cgr.dev/chainguard/nginx-fips:latest
-            cgr.dev/chainguard/python:latest → cgr.dev/chainguard/python:latest
+            go → cgr.dev/chainguard-private/go:latest
+            nginx-fips → cgr.dev/chainguard-private/nginx-fips:latest
+            cgr.dev/chainguard-private/python:latest → cgr.dev/chainguard-private/python:latest
         """
         # Already has registry prefix
         if image.startswith("cgr.dev/"):
@@ -241,4 +243,4 @@ class DFCMappings:
         if ":" not in image:
             image = f"{image}:latest"
 
-        return f"cgr.dev/chainguard/{image}"
+        return f"{CHAINGUARD_PRIVATE_REGISTRY}/{image}"
